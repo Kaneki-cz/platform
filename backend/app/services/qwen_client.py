@@ -16,6 +16,7 @@ _API_KEYS below for why that's worth doing.
 from __future__ import annotations
 
 import socket
+import sys
 import time
 from urllib.parse import urlsplit, urlunsplit
 
@@ -105,19 +106,29 @@ async def chat_completion(messages: list[dict], *, temperature: float = 0.2, tim
         "max_tokens": 2048,
     }
 
-    # We resolve the IP ourselves (IPv4-only — see _resolve_ipv4) and
-    # connect to it directly, since letting httpx do its own (dual-stack)
-    # resolution is what's actually broken here. Because we're now
-    # connecting to a bare IP instead of a hostname, TLS needs to be told
-    # explicitly what hostname to use for SNI + certificate verification
-    # (sni_hostname), and the server needs the real hostname in the Host
-    # header to route/vhost the request correctly. This only needs doing
-    # once per call, not once per key.
-    resolved_url, host = _resolve_ipv4(url)
+    # The manual IPv4-resolve-and-connect-by-IP workaround below is ONLY
+    # for the Windows cold-start DNS bug described in _resolve_ipv4's
+    # docstring. On Linux (e.g. the Ubuntu always-on server) that bug
+    # doesn't exist, and forcing a raw-IP connection with a spoofed Host/
+    # SNI header instead of letting httpx connect via the real hostname is
+    # actively harmful: Google's frontend then returns a generic
+    # "401 UNAUTHENTICATED / invalid authentication credentials" for every
+    # key, even correct ones, because it isn't reaching the endpoint that
+    # actually validates a plain API key the normal way. So: only do the
+    # IP-pinning dance on win32; everywhere else, just hit the URL directly
+    # and let httpx handle DNS/TLS/Host itself like any normal request.
+    if sys.platform == "win32":
+        resolved_url, host = _resolve_ipv4(url)
+        extra_headers = {"Host": host}
+        extensions = {"sni_hostname": host}
+    else:
+        resolved_url = url
+        extra_headers = {}
+        extensions = {}
 
     last_exc: Exception | None = None
     for attempt, api_key in enumerate(_API_KEYS, start=1):
-        headers = {"Authorization": f"Bearer {api_key}", "Host": host}
+        headers = {"Authorization": f"Bearer {api_key}", **extra_headers}
         try:
             # trust_env=False: don't let a stray HTTP_PROXY/HTTPS_PROXY env
             # var (left behind by a VPN/proxy tool, common on Windows)
@@ -127,7 +138,7 @@ async def chat_completion(messages: list[dict], *, temperature: float = 0.2, tim
                     resolved_url,
                     headers=headers,
                     json=payload,
-                    extensions={"sni_hostname": host},
+                    extensions=extensions,
                 )
                 if resp.status_code >= 400:
                     # Print the response body — this is where "invalid API
