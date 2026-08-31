@@ -1,26 +1,37 @@
-"""Video upload endpoint.
+"""Video upload endpoints.
 
-Lets instructors/admins upload a lecture video file directly from the app,
-as an alternative to pasting an external link (a YouTube link, or now).
+Lets instructors/admins get a lecture video into the app, either by pasting
+an external link (YouTube, etc.) or by uploading a file from their device.
 
 Uploaded files go to Backblaze B2 (see app/services/b2_storage.py) when
-B2_* is configured in .env — the backend server's own home-internet upload
-speed was measured at ~0.91 Mbit/s, far too slow to stream lecture video to
-students directly, which is what made this move necessary. When B2 isn't
-configured (e.g. local dev without a B2 account), this falls back to the
-original local-disk storage under backend/media/videos, served back out by
-main.py's "/media" static mount — exactly as before.
+B2_* is configured in .env. Crucially, the upload goes DIRECTLY from the
+admin's own device to B2 — POST /video-upload-url just hands out a
+short-lived presigned PUT URL, it never sees the video's bytes itself. That
+matters because this backend server's own home-internet upload speed was
+measured at ~0.91 Mbit/s: if the video were proxied through this server on
+its way to B2 (an earlier version of this endpoint did exactly that), it
+would cross that same slow uplink twice (once in from the admin, once back
+out to B2) — the exact bottleneck this whole B2 migration exists to avoid.
+A direct-to-B2 upload never touches this server's connection at all.
 
-The B2 bucket is PRIVATE, so a B2-backed upload's `video_url` is NOT a
+When B2 isn't configured (e.g. local dev without a B2 account), POST
+/video-upload-url instead tells the app to fall back to the original
+proxy-upload endpoint, POST /video, which stores straight to this server's
+own local disk under backend/media/videos (served back out by main.py's
+"/media" static mount) — fine for local development, where there's no
+home-internet bottleneck to worry about.
+
+The B2 bucket is PRIVATE, so a B2-backed video's `video_url` is NOT a
 playable link by itself — it's `b2:<object key>`, a marker the mobile app
-recognizes (see lib/api.ts's resolveVideoUrl) and exchanges for a short-lived
-signed URL via GET /video-url below, right before playback.
+recognizes (see lib/api.ts's resolveVideoUrl) and exchanges for a
+short-lived signed *playback* URL via GET /video-url right before playback
+(a separate, read-only signed URL from the upload one above).
 """
-import tempfile
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 
 from app.api.deps import get_current_user, require_instructor_or_admin
 from app.models.user import User
@@ -36,12 +47,69 @@ ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB safety cap
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
+CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+}
+
+
+class VideoUploadUrlRequest(BaseModel):
+    file_name: str
+    content_type: str
+
+
+@router.post("/video-upload-url")
+async def create_video_upload_url(
+    payload: VideoUploadUrlRequest,
+    _current_user: User = Depends(require_instructor_or_admin),
+) -> dict:
+    """First step of uploading a video file. Returns either:
+      - {"mode": "direct", "upload_url": ..., "video_url": "b2:..."} — the
+        app should PUT the raw file bytes straight to `upload_url` (no auth
+        header needed, the signature in the URL is the auth), then save
+        `video_url` as-is once that PUT succeeds.
+      - {"mode": "proxy"} — B2 isn't configured on this server; the app
+        should fall back to the original multipart upload at POST /video.
+    """
+    if not b2_storage.b2_configured():
+        return {"mode": "proxy"}
+
+    ext = Path(payload.file_name).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported video type {ext or '(unknown)'}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            ),
+        )
+
+    object_key = f"{b2_storage.VIDEO_KEY_PREFIX}{uuid.uuid4().hex}{ext}"
+    content_type = CONTENT_TYPES.get(ext, payload.content_type or "application/octet-stream")
+    try:
+        upload_url = b2_storage.generate_upload_url(object_key, content_type)
+    except Exception as e:  # noqa: BLE001 - surface any storage-side failure to the admin
+        raise HTTPException(status_code=502, detail=f"Could not prepare video upload: {e}") from e
+
+    return {
+        "mode": "direct",
+        "upload_url": upload_url,
+        "content_type": content_type,
+        "video_url": f"{b2_storage.B2_URL_SCHEME}{object_key}",
+    }
+
 
 @router.post("/video")
 async def upload_video(
     file: UploadFile = File(...),
     _current_user: User = Depends(require_instructor_or_admin),
 ) -> dict:
+    """Local-disk fallback proxy upload — only used by the app when
+    POST /video-upload-url reported {"mode": "proxy"} (B2 not configured).
+    Unchanged from before B2 existed."""
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -53,41 +121,8 @@ async def upload_video(
         )
 
     filename = f"{uuid.uuid4().hex}{ext}"
-
-    if b2_storage.b2_configured():
-        # Buffer to a temp file first rather than streaming straight into
-        # boto3 — boto3's upload calls are synchronous, and UploadFile's
-        # reads are async, so mixing them directly would block the event
-        # loop mid-upload. A local temp file (deleted right after) keeps
-        # this simple and is plenty fast for admin-only lecture uploads.
-        object_key = f"{b2_storage.VIDEO_KEY_PREFIX}{filename}"
-        size = 0
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            tmp_path = Path(tmp.name)
-            try:
-                while chunk := await file.read(CHUNK_SIZE):
-                    size += len(chunk)
-                    if size > MAX_UPLOAD_BYTES:
-                        raise HTTPException(status_code=413, detail="Video too large (max 500MB)")
-                    tmp.write(chunk)
-            except HTTPException:
-                tmp.close()
-                tmp_path.unlink(missing_ok=True)
-                raise
-            finally:
-                await file.close()
-
-        try:
-            b2_storage.upload_video_file(str(tmp_path), object_key)
-        except Exception as e:  # noqa: BLE001 - surface any storage-side failure to the admin
-            raise HTTPException(status_code=502, detail=f"Video storage upload failed: {e}") from e
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-        return {"video_url": f"{b2_storage.B2_URL_SCHEME}{object_key}"}
-
-    # --- Fallback: original local-disk storage (no B2 configured) ---
     destination = MEDIA_ROOT / filename
+
     size = 0
     try:
         with destination.open("wb") as out_file:

@@ -56,6 +56,35 @@ def upload_video_file(local_path: str, object_key: str) -> None:
     get_b2_client().upload_file(local_path, settings.B2_BUCKET_NAME, object_key)
 
 
+# How long a direct-upload URL stays valid. Needs to comfortably outlast a
+# large lecture video (up to the 500MB cap) finishing its upload over
+# whatever connection the admin's own device is on — an hour is generous
+# even for a slow phone connection, and nothing bad happens if it's opened
+# but not used (it just expires unused).
+UPLOAD_URL_EXPIRES_SECONDS = 60 * 60
+
+
+def generate_upload_url(object_key: str, content_type: str) -> str:
+    """A presigned PUT URL the ADMIN'S OWN DEVICE uploads straight to,
+    bypassing our backend entirely.
+
+    This matters a lot here specifically: the backend runs on a home
+    connection with a measured ~0.91 Mbit/s upload speed. If the app
+    uploaded to our backend first and the backend then forwarded the file to
+    B2 (the very first version of this feature did exactly that), every
+    video would have to cross that same slow home uplink TWICE — once
+    in, once back out — which is exactly the bottleneck this whole B2
+    migration was meant to eliminate. A direct-to-B2 presigned URL means the
+    video only ever travels from the admin's device to Backblaze's own
+    servers, never touching this server's connection at all.
+    """
+    return get_b2_client().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": settings.B2_BUCKET_NAME, "Key": object_key, "ContentType": content_type},
+        ExpiresIn=UPLOAD_URL_EXPIRES_SECONDS,
+    )
+
+
 def generate_signed_video_url(object_key: str) -> str:
     return get_b2_client().generate_presigned_url(
         "get_object",
