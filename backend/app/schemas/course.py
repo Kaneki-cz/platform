@@ -8,6 +8,13 @@ class LessonOut(BaseModel):
     title: str
     video_url: str | None = None
     order_index: int
+    # True when this lesson has no segment quizzes, or the current user has
+    # passed every one of them (>=75% correct on their latest attempts) —
+    # computed per-request in app/api/routes/courses.py's get_course, since
+    # it depends on who's asking. Defaults to True so any endpoint that
+    # returns a LessonOut without computing this (e.g. a plain lesson fetch)
+    # never accidentally locks something.
+    quiz_passed: bool = True
 
     model_config = {"from_attributes": True}
 

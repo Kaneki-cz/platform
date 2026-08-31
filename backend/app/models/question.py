@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,15 @@ class Question(Base):
     choices: Mapped[dict] = mapped_column(JSONB, nullable=True)  # for multiple_choice
     correct_answer: Mapped[str] = mapped_column(String(500), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=True)
+    # Second into the lecture's video where playback should pause and this
+    # question's segment-quiz should appear — every question sharing the
+    # same value belongs to the same "part" of the lecture. NULL means "no
+    # specific pause point" (shown once the video ends instead — see
+    # app/api/routes/courses.py's segment-grouping for how this is used to
+    # gate progression: a lesson's next sibling is locked until every one of
+    # its segments is passed at >=75%). Requires
+    # migrate_v5_question_segments.py on an existing database.
+    pause_at_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     lesson: Mapped["Lesson"] = relationship(back_populates="questions")
     attempts: Mapped[list["QuestionAttempt"]] = relationship(back_populates="question", cascade="all, delete-orphan")
