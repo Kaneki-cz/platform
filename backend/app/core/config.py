@@ -37,6 +37,25 @@ class Settings(BaseSettings):
     AI_DAILY_REQUEST_LIMIT_FREE: int = 20
     AI_DAILY_REQUEST_LIMIT_PRO: int = 500
 
+    # Video storage (Backblaze B2, via its S3-compatible API) — lecture
+    # videos live here instead of this server's own disk, since this
+    # server's home-internet upload speed is far too slow to stream video to
+    # students directly (measured ~0.91 Mbit/s). The bucket is PRIVATE (a
+    # free B2 account can't make a bucket public without adding a payment
+    # method), so app/api/routes/uploads.py hands out short-lived signed
+    # URLs on demand instead of a permanent public link — see
+    # get_video_signed_url there. Leave B2_KEY_ID empty to fall back to the
+    # old local-disk /media/videos storage (useful for local dev without a
+    # B2 account).
+    B2_KEY_ID: str = ""
+    B2_APPLICATION_KEY: str = ""
+    B2_BUCKET_NAME: str = ""
+    # e.g. "s3.us-west-004.backblazeb2.com" — shown on the bucket's details
+    # page in the B2 dashboard. No "https://" prefix.
+    B2_ENDPOINT: str = ""
+    # e.g. "us-west-004" — the leading segment of B2_ENDPOINT.
+    B2_REGION: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
