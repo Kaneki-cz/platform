@@ -28,8 +28,15 @@ from app.core.config import settings
 SIGNED_URL_EXPIRES_SECONDS = 6 * 60 * 60
 
 VIDEO_KEY_PREFIX = "videos/"
-# Marks a Lesson.video_url value as "a B2 object key, not a real URL" — see
-# resolveVideoUrl on the mobile side (lib/api.ts), which branches on this
+# Teacher photos and chapter cover images — same private-bucket, same
+# signed-URL treatment as video, just a different key prefix for tidiness
+# in the bucket listing. generate_upload_url/generate_signed_video_url
+# below are already fully generic over object_key, so no other change was
+# needed here to support images.
+IMAGE_KEY_PREFIX = "images/"
+# Marks a Lesson.video_url / TeacherProfile.photo_url / Course.cover_image_url
+# value as "a B2 object key, not a real URL" — see resolveVideoUrl /
+# resolveFileUrl on the mobile side (lib/api.ts), which branches on this
 # prefix instead of treating it as an http(s) link or a local /media/ path.
 B2_URL_SCHEME = "b2:"
 

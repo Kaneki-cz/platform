@@ -106,6 +106,8 @@ def create_course(
         title=payload.title,
         description=payload.description,
         grade_level=payload.grade_level,
+        teacher_id=payload.teacher_id,
+        cover_image_url=payload.cover_image_url,
         order_index=payload.order_index,
     )
     db.add(course)

@@ -26,6 +26,12 @@ class Subject(Base):
         back_populates="subject", order_by="Course.order_index", cascade="all, delete-orphan"
     )
     instructors: Mapped[list["SubjectInstructor"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
+    # Display-card teachers (see app/models/teacher.py) shown when browsing
+    # this subject — unrelated to `instructors` above, which is about real
+    # user-account edit permissions, not what students see.
+    teachers: Mapped[list["TeacherProfile"]] = relationship(
+        back_populates="subject", order_by="TeacherProfile.order_index", cascade="all, delete-orphan"
+    )
 
 
 class SubjectInstructor(Base):
