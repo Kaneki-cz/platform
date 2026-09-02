@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
+from app.models.lesson import Lesson
+from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate
@@ -24,8 +26,33 @@ PASS_THRESHOLD = 0.75
 
 
 @router.get("", response_model=list[CourseOut])
-def list_courses(db: Session = Depends(get_db), _=Depends(get_current_user)) -> list[Course]:
-    return db.query(Course).order_by(Course.order_index).all()
+def list_courses(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[Course]:
+    """Only the courses/chapters `current_user` has actually started (has a
+    progress entry on at least one of their lessons) — this is what backs
+    the Home tab's "Continue learning" list only (the mobile app's only
+    caller of this endpoint; browsing everything else goes through
+    GET /subjects/{id}, which is unaffected).
+
+    This used to return every chapter on the whole platform, unfiltered.
+    Before the teacher/grade-scoped chapters feature that was harmless —
+    home just doubled as a flat course directory — but once chapters could
+    be filed under a specific teacher/grade meant for a subset of students,
+    that turned into a real leak: any chapter you added anywhere showed up
+    on every student's home screen the moment it existed, regardless of
+    which teacher/grade it was supposed to be gated behind. Scoping to
+    "started" closes that until proper enrollment/paywall gating exists.
+    """
+    return (
+        db.query(Course)
+        .join(Lesson, Lesson.course_id == Course.id)
+        .join(
+            LessonProgress,
+            (LessonProgress.lesson_id == Lesson.id) & (LessonProgress.user_id == current_user.id),
+        )
+        .distinct()
+        .order_by(Course.order_index)
+        .all()
+    )
 
 
 @router.get("/{course_id}", response_model=CourseDetailOut)
