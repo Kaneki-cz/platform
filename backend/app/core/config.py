@@ -37,23 +37,32 @@ class Settings(BaseSettings):
     AI_DAILY_REQUEST_LIMIT_FREE: int = 20
     AI_DAILY_REQUEST_LIMIT_PRO: int = 500
 
-    # Video storage (Backblaze B2, via its S3-compatible API) — lecture
-    # videos live here instead of this server's own disk, since this
-    # server's home-internet upload speed is far too slow to stream video to
-    # students directly (measured ~0.91 Mbit/s). The bucket is PRIVATE (a
-    # free B2 account can't make a bucket public without adding a payment
-    # method), so app/api/routes/uploads.py hands out short-lived signed
+    # Video storage — any S3-compatible object store, spoken to via boto3 in
+    # app/services/b2_storage.py. Originally Backblaze B2 (hence the B2_*
+    # names — kept as-is on purpose after moving to Cloudflare R2, since the
+    # database already has "b2:<key>" markers stored in Lesson.video_url /
+    # TeacherProfile.photo_url / Course.cover_image_url and there's no
+    # reason to rename a working scheme just because the provider behind it
+    # changed). Lecture videos live here instead of this server's own disk,
+    # since this server's home-internet upload speed is far too slow to
+    # stream video to students directly (measured ~0.91 Mbit/s). The bucket
+    # is PRIVATE, so app/api/routes/uploads.py hands out short-lived signed
     # URLs on demand instead of a permanent public link — see
     # get_video_signed_url there. Leave B2_KEY_ID empty to fall back to the
     # old local-disk /media/videos storage (useful for local dev without a
-    # B2 account).
+    # bucket at all).
     B2_KEY_ID: str = ""
     B2_APPLICATION_KEY: str = ""
     B2_BUCKET_NAME: str = ""
-    # e.g. "s3.us-west-004.backblazeb2.com" — shown on the bucket's details
-    # page in the B2 dashboard. No "https://" prefix.
+    # Backblaze B2: e.g. "s3.us-west-004.backblazeb2.com" (shown on the
+    # bucket's details page in the B2 dashboard).
+    # Cloudflare R2: "<ACCOUNT_ID>.r2.cloudflarestorage.com" — ACCOUNT_ID is
+    # shown on the R2 Overview page in the Cloudflare dashboard.
+    # No "https://" prefix either way.
     B2_ENDPOINT: str = ""
-    # e.g. "us-west-004" — the leading segment of B2_ENDPOINT.
+    # Backblaze B2: e.g. "us-west-004" — the leading segment of B2_ENDPOINT.
+    # Cloudflare R2: always the literal string "auto" (R2 has no real
+    # regions; boto3/S3 still requires something non-empty here).
     B2_REGION: str = ""
 
 

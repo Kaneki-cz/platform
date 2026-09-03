@@ -1,5 +1,9 @@
-"""Backblaze B2 object storage — via its S3-compatible API (boto3), so this
-reads and writes exactly like any other S3-compatible bucket.
+"""Object storage — via boto3's S3-compatible API, so this reads and writes
+exactly like any other S3-compatible bucket. Originally written against
+Backblaze B2 (hence the file/setting names), now pointed at Cloudflare R2
+instead — see app/core/config.py's B2_* settings for the two providers'
+different endpoint/region values. Nothing below needed to change to make
+that switch: R2 speaks the same S3 API, presigned-URL mechanics included.
 
 Videos live in a PRIVATE B2 bucket (see app/core/config.py's B2_* settings
 for why: a free B2 account can't flip a bucket to Public without adding a
