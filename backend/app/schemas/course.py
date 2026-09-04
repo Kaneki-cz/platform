@@ -28,12 +28,24 @@ class LessonOut(BaseModel):
     # returns a LessonOut without computing this (e.g. a plain lesson fetch)
     # never accidentally locks something.
     quiz_passed: bool = True
+    # NULL = unlimited (the default) — see app/models/lesson.py's max_views
+    # comment. Exposed on every LessonOut (harmless to show; it's just a
+    # setting, not a secret) so the admin lecture-edit form can prefill it.
+    max_views: int | None = None
 
     model_config = {"from_attributes": True}
 
 
 class LessonDetailOut(LessonOut):
     content: str | None = None
+    # The next three are only ever computed for a signed-in STUDENT on a
+    # max_views-capped lesson — see app/api/routes/lessons.py's get_lesson.
+    # They stay None/False for instructors/admins (never capped) and for
+    # uncapped lessons, so the mobile app can tell "not applicable" apart
+    # from "0 views left" (views_allowed would be a real number in that case).
+    views_used: int | None = None
+    views_allowed: int | None = None
+    view_limit_reached: bool = False
 
 
 class LessonCreate(BaseModel):
@@ -42,6 +54,7 @@ class LessonCreate(BaseModel):
     content: str | None = None
     video_url: str | None = None
     order_index: int = 0
+    max_views: int | None = None
 
 
 class LessonUpdate(BaseModel):
@@ -49,6 +62,7 @@ class LessonUpdate(BaseModel):
     content: str | None = None
     video_url: str | None = None
     order_index: int | None = None
+    max_views: int | None = None
 
 
 class CourseOut(BaseModel):
