@@ -10,6 +10,7 @@ from app.models.lesson import Lesson
 from app.models.progress import LessonProgress
 from app.models.user import User, UserRole
 from app.schemas.course import LessonCreate, LessonDetailOut, LessonUpdate
+from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/lessons", tags=["lessons"])
 
@@ -114,10 +115,21 @@ def update_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
     ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    # Captured before the field is overwritten below — this is the video
+    # that's about to be replaced, if any. Only actually stale (and worth
+    # deleting from R2) once the new value is different AND the commit
+    # below succeeds; see the cleanup call after db.commit().
+    old_video_url = lesson.video_url if "video_url" in fields else None
+
+    for field, value in fields.items():
         setattr(lesson, field, value)
     db.commit()
     db.refresh(lesson)
+
+    if old_video_url is not None and old_video_url != lesson.video_url:
+        b2_storage.delete_object_for_url(old_video_url)
+
     return lesson
 
 
@@ -131,5 +143,7 @@ def delete_lesson(
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
     ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
+    video_url = lesson.video_url
     db.delete(lesson)
     db.commit()
+    b2_storage.delete_object_for_url(video_url)

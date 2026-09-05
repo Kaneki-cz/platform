@@ -12,6 +12,7 @@ from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate
+from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
@@ -155,10 +156,17 @@ def update_course(
         raise HTTPException(status_code=404, detail="Course not found")
     ensure_can_manage_subject(db, current_user, course.subject_id)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    old_cover_image_url = course.cover_image_url if "cover_image_url" in fields else None
+
+    for field, value in fields.items():
         setattr(course, field, value)
     db.commit()
     db.refresh(course)
+
+    if old_cover_image_url is not None and old_cover_image_url != course.cover_image_url:
+        b2_storage.delete_object_for_url(old_cover_image_url)
+
     return course
 
 
@@ -172,5 +180,17 @@ def delete_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     ensure_can_manage_subject(db, current_user, course.subject_id)
+
+    # Deleting the course cascades to its lessons at the ORM level (see
+    # Course.lessons' cascade="all, delete-orphan"), but that cascade never
+    # runs OUR cleanup code per-lesson — so their video files would silently
+    # become permanent orphans in R2 without this. Captured before the
+    # delete for the same reason as cover_image_url below: gone from the DB
+    # after commit either way.
+    stale_urls = [course.cover_image_url] + [lesson.video_url for lesson in course.lessons]
+
     db.delete(course)
     db.commit()
+
+    for url in stale_urls:
+        b2_storage.delete_object_for_url(url)

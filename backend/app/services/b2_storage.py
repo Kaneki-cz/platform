@@ -102,3 +102,30 @@ def generate_signed_video_url(object_key: str) -> str:
         Params={"Bucket": settings.B2_BUCKET_NAME, "Key": object_key},
         ExpiresIn=SIGNED_URL_EXPIRES_SECONDS,
     )
+
+
+def delete_object(object_key: str) -> None:
+    get_b2_client().delete_object(Bucket=settings.B2_BUCKET_NAME, Key=object_key)
+
+
+def delete_object_for_url(url: str | None) -> None:
+    """Best-effort cleanup for a Lesson.video_url / TeacherProfile.photo_url /
+    Course.cover_image_url value that is about to be replaced or is no
+    longer referenced anywhere (the row that pointed to it was just
+    deleted, or updated to point somewhere else).
+
+    Silently does nothing for a value that isn't a B2 object at all — an
+    external link (YouTube etc.), an old local /media/ path, or empty/None
+    — there's nothing in our bucket to remove for those. Any failure talking
+    to R2/B2 (network hiccup, object already gone, etc.) is swallowed rather
+    than raised: a failed cleanup should never turn into a 500 for an admin
+    who successfully replaced or deleted a video/photo/cover image — it
+    would just mean a stray object sits in the bucket, not a broken save.
+    """
+    if not url or not url.startswith(B2_URL_SCHEME) or not b2_configured():
+        return
+    object_key = url[len(B2_URL_SCHEME):]
+    try:
+        delete_object(object_key)
+    except Exception:
+        pass

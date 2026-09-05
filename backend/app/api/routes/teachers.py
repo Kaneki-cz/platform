@@ -14,6 +14,7 @@ from app.models.course import Course
 from app.models.teacher import TeacherProfile
 from app.models.user import User
 from app.schemas.teacher import TeacherCreate, TeacherOut, TeacherUpdate
+from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1", tags=["teachers"])
 
@@ -63,10 +64,17 @@ def update_teacher(
         raise HTTPException(status_code=404, detail="Teacher not found")
     ensure_can_manage_subject(db, current_user, teacher.subject_id)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    old_photo_url = teacher.photo_url if "photo_url" in fields else None
+
+    for field, value in fields.items():
         setattr(teacher, field, value)
     db.commit()
     db.refresh(teacher)
+
+    if old_photo_url is not None and old_photo_url != teacher.photo_url:
+        b2_storage.delete_object_for_url(old_photo_url)
+
     return teacher
 
 
@@ -88,5 +96,7 @@ def delete_teacher(
             detail="This teacher has chapters assigned to them — reassign or delete those chapters first.",
         )
 
+    photo_url = teacher.photo_url
     db.delete(teacher)
     db.commit()
+    b2_storage.delete_object_for_url(photo_url)
