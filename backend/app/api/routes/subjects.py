@@ -9,6 +9,7 @@ from app.models.course import Course
 from app.models.subject import Subject, SubjectInstructor
 from app.models.user import User
 from app.schemas.subject import InstructorAssign, InstructorOut, SubjectCreate, SubjectDetailOut, SubjectOut
+from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/subjects", tags=["subjects"])
 
@@ -53,13 +54,41 @@ def delete_subject(
     _admin: User = Depends(require_admin),
 ) -> None:
     """Deletes a subject and, via cascade="all, delete-orphan" on
-    Subject.courses (which itself cascades to Course.lessons), every chapter
-    and lecture inside it too. Admin-only, same as creating a subject."""
-    subject = db.get(Subject, subject_id)
+    Subject.courses (which itself cascades to Course.lessons) AND on
+    Subject.teachers, every chapter, lecture, and teacher-card inside it
+    too. Admin-only, same as creating a subject.
+
+    Same gap as delete_course had (now fixed there): the ORM cascade above
+    deletes every nested Course/Lesson/TeacherProfile row in the DB, but it
+    never runs our R2 cleanup code per row, so every chapter's cover image,
+    every lecture's video, AND every teacher's photo across the whole
+    subject would silently orphan in R2 forever. Collect all of it up
+    front — before the delete — since none of it is reachable anymore once
+    the transaction commits.
+    """
+    subject = (
+        db.query(Subject)
+        .options(
+            selectinload(Subject.courses).selectinload(Course.lessons),
+            selectinload(Subject.teachers),
+        )
+        .filter(Subject.id == subject_id)
+        .first()
+    )
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
+
+    stale_urls = []
+    for course in subject.courses:
+        stale_urls.append(course.cover_image_url)
+        stale_urls.extend(lesson.video_url for lesson in course.lessons)
+    stale_urls.extend(teacher.photo_url for teacher in subject.teachers)
+
     db.delete(subject)
     db.commit()
+
+    for url in stale_urls:
+        b2_storage.delete_object_for_url(url)
 
 
 @router.get("/{subject_id}/instructors", response_model=list[InstructorOut])
