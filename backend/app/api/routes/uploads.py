@@ -184,3 +184,24 @@ async def get_video_signed_url(
     except Exception as e:  # noqa: BLE001 - surface any storage-side failure to the app
         raise HTTPException(status_code=502, detail=f"Could not create a video link: {e}") from e
     return {"url": url}
+
+
+@router.delete("/object", status_code=204)
+async def discard_uploaded_object(
+    url: str = Query(..., description="A b2:<key> value to delete — see the admin app's discardIfUnsaved."),
+    _current_user: User = Depends(require_instructor_or_admin),
+) -> None:
+    """Lets the admin app clean up a file it already uploaded straight to
+    R2/B2 but never actually saved to a lesson/teacher/course — e.g. the
+    admin picked a video, then picked ANOTHER one before hitting Save, or
+    backed out of editing altogether. Without this, that first upload has
+    no lesson/teacher/course pointing at it for the delete/replace cleanup
+    in app/services/b2_storage.py (delete_object_for_url, called from
+    lessons.py/teachers.py/courses.py) to ever catch, so it would sit in
+    the bucket forever.
+
+    Best-effort and deliberately permissive: does nothing (not an error)
+    for a URL that isn't a b2:<key> at all (an external link — there's
+    nothing of ours to delete) or if B2 isn't configured.
+    """
+    b2_storage.delete_object_for_url(url)
