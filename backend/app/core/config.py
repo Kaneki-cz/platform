@@ -65,6 +65,18 @@ class Settings(BaseSettings):
     # regions; boto3/S3 still requires something non-empty here).
     B2_REGION: str = ""
 
+    # Security-event notifications (currently just the mobile app's hidden
+    # server-settings screen reporting an access attempt — see
+    # app/api/routes/security.py). Leave both empty to disable: the endpoint
+    # silently no-ops instead of erroring, so the app never breaks over this
+    # being unconfigured. TELEGRAM_BOT_TOKEN comes from @BotFather;
+    # TELEGRAM_CHAT_ID is the numeric chat id the bot should message (get it
+    # by messaging the bot once, then GET
+    # https://api.telegram.org/bot<TOKEN>/getUpdates and reading
+    # result[0].message.chat.id).
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

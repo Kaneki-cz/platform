@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.routes import admin, ai_chat, auth, courses, lessons, progress, questions, subjects, teachers, uploads
+from app.api.routes import (
+    admin,
+    ai_chat,
+    auth,
+    courses,
+    lessons,
+    progress,
+    questions,
+    security,
+    subjects,
+    teachers,
+    uploads,
+)
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -13,3 +25,4 @@ api_router.include_router(questions.router)
 api_router.include_router(uploads.router)
 api_router.include_router(ai_chat.router)
 api_router.include_router(admin.router)
+api_router.include_router(security.router)
