@@ -7,6 +7,7 @@ from app.api.deps import ensure_can_manage_subject, get_current_user, require_in
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.lesson import Lesson
+from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.user import User, UserRole
 from app.schemas.course import LessonCreate, LessonDetailOut, LessonUpdate
@@ -29,6 +30,31 @@ def get_lesson(
     views_used: int | None = None
     views_allowed: int | None = None
     view_limit_reached = False
+    requires_code = False
+    code_unlocked = True
+
+    # Same staff-exempt policy as max_views below: only a student can ever be
+    # gated by a code, and only for a lecture an instructor/admin actually
+    # generated codes for (see app/models/lesson_access_code.py). Checked
+    # before the view-count logic below so a student who hasn't unlocked the
+    # video yet never has a view silently burned against a video they can't
+    # even see.
+    if current_user.role == UserRole.student:
+        requires_code = (
+            db.query(LessonAccessCode.id).filter(LessonAccessCode.lesson_id == lesson.id).first() is not None
+        )
+        if requires_code:
+            code_unlocked = (
+                db.query(LessonAccessCode.id)
+                .filter(
+                    LessonAccessCode.lesson_id == lesson.id,
+                    LessonAccessCode.redeemed_by_user_id == current_user.id,
+                )
+                .first()
+                is not None
+            )
+            if not code_unlocked:
+                video_url = None
 
     # The view-count cap only ever applies to students, and only to lessons
     # an instructor/admin explicitly opted into limiting (max_views is NULL
@@ -36,7 +62,12 @@ def get_lesson(
     # is also what the admin "manage questions" screen calls to show a
     # lecture's title while editing, so instructor/admin callers must never
     # be capped or counted here.
-    if current_user.role == UserRole.student and lesson.max_views is not None and lesson.video_url:
+    if (
+        current_user.role == UserRole.student
+        and lesson.max_views is not None
+        and lesson.video_url
+        and (not requires_code or code_unlocked)
+    ):
         entry = (
             db.query(LessonProgress)
             .filter(LessonProgress.user_id == current_user.id, LessonProgress.lesson_id == lesson.id)
@@ -70,6 +101,8 @@ def get_lesson(
         views_used=views_used,
         views_allowed=views_allowed,
         view_limit_reached=view_limit_reached,
+        requires_code=requires_code,
+        code_unlocked=code_unlocked,
     )
 
 

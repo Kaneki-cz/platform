@@ -8,9 +8,10 @@ from app.api.deps import ensure_can_manage_subject, get_current_user, require_in
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.lesson import Lesson
+from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate
 from app.services import b2_storage
 
@@ -73,6 +74,7 @@ def get_course(
 
     out = CourseDetailOut.model_validate(course)
     _annotate_quiz_passed(db, current_user, course, out)
+    _annotate_code_gate(db, current_user, course, out)
     return out
 
 
@@ -120,6 +122,35 @@ def _annotate_quiz_passed(db: Session, current_user: User, course: Course, out: 
     for lesson_out in out.lessons:
         if lesson_out.id in passed_by_lesson:
             lesson_out.quiz_passed = passed_by_lesson[lesson_out.id]
+
+
+def _annotate_code_gate(db: Session, current_user: User, course: Course, out: CourseDetailOut) -> None:
+    """Sets requires_code/code_unlocked on each lesson in `out.lessons` —
+    same staff-exempt, opt-in-per-lesson policy as
+    app/api/routes/lessons.py's get_lesson (see that function's own
+    comments); kept here too so the chapter/lecture LIST screen can show the
+    right locked-by-code state without a get_lesson call per row. Only ever
+    computed for students — every lesson stays at its LessonOut default
+    (requires_code=False, code_unlocked=True) for instructor/admin viewers."""
+    if current_user.role != UserRole.student:
+        return
+
+    lesson_ids = [lesson.id for lesson in course.lessons]
+    if not lesson_ids:
+        return
+
+    codes = (
+        db.query(LessonAccessCode.lesson_id, LessonAccessCode.redeemed_by_user_id)
+        .filter(LessonAccessCode.lesson_id.in_(lesson_ids))
+        .all()
+    )
+    gated_lesson_ids = {lesson_id for lesson_id, _redeemed_by in codes}
+    unlocked_lesson_ids = {lesson_id for lesson_id, redeemed_by in codes if redeemed_by == current_user.id}
+
+    for lesson_out in out.lessons:
+        if lesson_out.id in gated_lesson_ids:
+            lesson_out.requires_code = True
+            lesson_out.code_unlocked = lesson_out.id in unlocked_lesson_ids
 
 
 @router.post("", response_model=CourseOut, status_code=201)

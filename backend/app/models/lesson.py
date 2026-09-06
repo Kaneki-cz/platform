@@ -35,3 +35,8 @@ class Lesson(Base):
     progress_entries: Mapped[list["LessonProgress"]] = relationship(
         back_populates="lesson", cascade="all, delete-orphan"
     )
+    # See app/models/lesson_access_code.py — empty list = this lecture has no
+    # code requirement at all (the common case; nothing changes for it).
+    access_codes: Mapped[list["LessonAccessCode"]] = relationship(
+        back_populates="lesson", cascade="all, delete-orphan"
+    )

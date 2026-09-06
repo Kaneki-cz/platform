@@ -32,6 +32,22 @@ class LessonOut(BaseModel):
     # comment. Exposed on every LessonOut (harmless to show; it's just a
     # setting, not a secret) so the admin lecture-edit form can prefill it.
     max_views: int | None = None
+    # True once at least one LessonAccessCode has been generated for this
+    # lecture (see app/models/lesson_access_code.py) — independent of
+    # max_views/quiz_passed. False (the default) for every lecture that
+    # never opted into the code-gate feature, so nothing changes for
+    # existing content. Only ever computed for a signed-in STUDENT — see
+    # app/api/routes/courses.py's _annotate_code_gate and
+    # app/api/routes/lessons.py's get_lesson (instructors/admins are never
+    # gated, same policy as max_views).
+    requires_code: bool = False
+    # Meaningless when requires_code is False. True once current_user has
+    # redeemed ANY code for this specific lecture — a lecture that requires
+    # a code but isn't unlocked yet has no video_url handed back (same
+    # "withhold the URL server-side" approach as view_limit_reached below),
+    # so the mobile app can tell "show a redeem-code prompt" apart from
+    # "show the player" without a second round trip.
+    code_unlocked: bool = True
 
     model_config = {"from_attributes": True}
 
