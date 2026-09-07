@@ -1,7 +1,13 @@
-"""Segment quiz questions — see app/models/question.py's pause_at_seconds
-for how questions are grouped into a lecture's "parts", and
-app/api/routes/courses.py for how a lesson's pass/fail on these gates
-whether the app lets a student move on to the next lecture.
+"""Segment quiz questions AND standalone-exam questions — both live in the
+same Question table (see app/models/question.py's docstring on
+lesson_id/exam_id being mutually exclusive). Segment quizzes: see
+app/models/question.py's pause_at_seconds for how questions are grouped
+into a lecture's "parts", and app/api/routes/courses.py for how a lesson's
+pass/fail on these gates whether the app lets a student move on to the
+next lecture. Standalone exams: see app/models/exam.py and
+app/api/routes/exams.py for the take/submit flow — this file only handles
+AUTHORING (create/update/delete/list) for exam questions, reusing the same
+endpoints as segment-quiz questions.
 """
 import uuid
 
@@ -11,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
+from app.models.exam import Exam
 from app.models.lesson import Lesson
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
@@ -39,6 +46,29 @@ def _subject_id_of_lesson(db: Session, lesson: Lesson) -> uuid.UUID:
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     return course.subject_id
+
+
+def _subject_id_of_exam(db: Session, exam: Exam) -> uuid.UUID:
+    course = db.get(Course, exam.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course.subject_id
+
+
+def _subject_id_of_question(db: Session, question: Question) -> uuid.UUID:
+    """Works for either kind of question — see Question's docstring on
+    lesson_id/exam_id being mutually exclusive."""
+    if question.lesson_id is not None:
+        lesson = db.get(Lesson, question.lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        return _subject_id_of_lesson(db, lesson)
+    if question.exam_id is not None:
+        exam = db.get(Exam, question.exam_id)
+        if not exam:
+            raise HTTPException(status_code=404, detail="Exam not found")
+        return _subject_id_of_exam(db, exam)
+    raise HTTPException(status_code=400, detail="This question has neither a lesson nor an exam.")
 
 
 def _ordered_questions(db: Session, lesson_id: uuid.UUID) -> list[Question]:
@@ -134,19 +164,42 @@ def list_lesson_questions_admin(
     return _ordered_questions(db, lesson_id)
 
 
+@router.get("/api/v1/exams/{exam_id}/questions/admin", response_model=list[QuestionAdminOut])
+def list_exam_questions_admin(
+    exam_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> list[Question]:
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+    return db.query(Question).filter(Question.exam_id == exam_id).order_by(Question.id).all()
+
+
 @router.post("/api/v1/questions", response_model=QuestionAdminOut, status_code=201)
 def create_question(
     payload: QuestionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_instructor_or_admin),
 ) -> Question:
-    lesson = db.get(Lesson, payload.lesson_id)
-    if not lesson:
-        raise HTTPException(status_code=404, detail="Lesson not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    if bool(payload.lesson_id) == bool(payload.exam_id):
+        raise HTTPException(status_code=400, detail="Set exactly one of lesson_id or exam_id.")
+
+    if payload.lesson_id:
+        lesson = db.get(Lesson, payload.lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    else:
+        exam = db.get(Exam, payload.exam_id)
+        if not exam:
+            raise HTTPException(status_code=404, detail="Exam not found")
+        ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
 
     question = Question(
         lesson_id=payload.lesson_id,
+        exam_id=payload.exam_id,
         prompt=payload.prompt,
         question_type=payload.question_type,
         choices=payload.choices,
@@ -170,8 +223,7 @@ def update_question(
     question = db.get(Question, question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    lesson = db.get(Lesson, question.lesson_id)
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(question, field, value)
@@ -189,7 +241,6 @@ def delete_question(
     question = db.get(Question, question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    lesson = db.get(Lesson, question.lesson_id)
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
     db.delete(question)
     db.commit()

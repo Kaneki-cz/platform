@@ -5,6 +5,7 @@ from app.api.routes import (
     ai_chat,
     auth,
     courses,
+    exams,
     lesson_access_codes,
     lessons,
     progress,
@@ -22,6 +23,7 @@ api_router.include_router(courses.router)
 api_router.include_router(teachers.router)
 api_router.include_router(lessons.router)
 api_router.include_router(lesson_access_codes.router)
+api_router.include_router(exams.router)
 api_router.include_router(progress.router)
 api_router.include_router(questions.router)
 api_router.include_router(uploads.router)

@@ -35,3 +35,6 @@ class Course(Base):
     subject: Mapped["Subject"] = relationship(back_populates="courses")
     teacher: Mapped["TeacherProfile"] = relationship()
     lessons: Mapped[list["Lesson"]] = relationship(back_populates="course", order_by="Lesson.order_index", cascade="all, delete-orphan")
+    # See app/models/exam.py — empty list = this chapter has no standalone
+    # exams at all (the common case; nothing changes for it).
+    exams: Mapped[list["Exam"]] = relationship(back_populates="course", order_by="Exam.order_index", cascade="all, delete-orphan")

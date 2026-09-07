@@ -48,6 +48,19 @@ class LessonOut(BaseModel):
     # so the mobile app can tell "show a redeem-code prompt" apart from
     # "show the player" without a second round trip.
     code_unlocked: bool = True
+    # True once current_user (a student) is blocked from this lecture by
+    # one or more unpassed standalone exams earlier in the same course —
+    # see app/services/exam_gate.py. Always False for instructors/admins,
+    # and for any lesson with exempt_from_exam_gate=True. video_url is
+    # withheld server-side whenever this is True (see
+    # app/api/routes/lessons.py's get_lesson), same withholding approach as
+    # view_limit_reached/code_unlocked above.
+    locked_by_exam: bool = False
+    # Admin-only escape hatch — lets a specific lecture stay reachable even
+    # though an earlier standalone exam in the same course hasn't been
+    # passed yet. Surfaced on every LessonOut (harmless, just a setting) so
+    # the admin lecture-edit form can prefill its toggle.
+    exempt_from_exam_gate: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -71,6 +84,7 @@ class LessonCreate(BaseModel):
     video_url: str | None = None
     order_index: int = 0
     max_views: int | None = None
+    exempt_from_exam_gate: bool = False
 
 
 class LessonUpdate(BaseModel):
@@ -79,6 +93,28 @@ class LessonUpdate(BaseModel):
     video_url: str | None = None
     order_index: int | None = None
     max_views: int | None = None
+    exempt_from_exam_gate: bool | None = None
+
+
+class ExamSummaryOut(BaseModel):
+    """The chapter/lecture LIST view's summary of one standalone exam —
+    enough for the mobile app to render an exam "card" interleaved with
+    lessons (by order_index) and a start/result button. Full
+    question-by-question management goes through /api/v1/exams and
+    /api/v1/exams/{id}/questions/admin instead (see app/schemas/exam.py)."""
+
+    id: uuid.UUID
+    title: str
+    order_index: int
+    passing_percent: int
+    question_count: int = 0
+    # Only ever computed for a signed-in STUDENT (see
+    # app/api/routes/courses.py's _annotate_exam_gate) — None for
+    # instructors/admins and for a student who hasn't attempted it yet.
+    passed: bool | None = None
+    best_score_percent: float | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class CourseOut(BaseModel):
@@ -96,6 +132,9 @@ class CourseOut(BaseModel):
 
 class CourseDetailOut(CourseOut):
     lessons: list[LessonOut] = []
+    # Empty for the common case (a course with no standalone exams) —
+    # populated by app/api/routes/courses.py's _annotate_exam_gate.
+    exams: list[ExamSummaryOut] = []
 
 
 class CourseCreate(BaseModel):

@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
+from app.models.exam import Exam, ExamAttempt
 from app.models.lesson import Lesson
 from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User, UserRole
-from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate
+from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate, ExamSummaryOut
 from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
@@ -75,6 +76,7 @@ def get_course(
     out = CourseDetailOut.model_validate(course)
     _annotate_quiz_passed(db, current_user, course, out)
     _annotate_code_gate(db, current_user, course, out)
+    _annotate_exam_gate(db, current_user, course, out)
     return out
 
 
@@ -151,6 +153,56 @@ def _annotate_code_gate(db: Session, current_user: User, course: Course, out: Co
         if lesson_out.id in gated_lesson_ids:
             lesson_out.requires_code = True
             lesson_out.code_unlocked = lesson_out.id in unlocked_lesson_ids
+
+
+def _annotate_exam_gate(db: Session, current_user: User, course: Course, out: CourseDetailOut) -> None:
+    """Fills out.exams with every standalone Exam in this course (with
+    pass/fail computed for current_user, if they're a student), and sets
+    locked_by_exam on each lesson in out.lessons that has one or more
+    unpassed exams earlier in the course's ordering — unless that lesson
+    opted out via exempt_from_exam_gate. Instructors/admins are never
+    gated (out.exams still lists every exam for them, just without a
+    passed/best_score_percent verdict) — same staff-exempt policy as
+    _annotate_code_gate above."""
+    exams = db.query(Exam).filter(Exam.course_id == course.id).order_by(Exam.order_index).all()
+
+    passed_exam_ids: set[uuid.UUID] = set()
+    best_score_by_exam: dict[uuid.UUID, float] = {}
+    if current_user.role == UserRole.student and exams:
+        rows = (
+            db.query(ExamAttempt.exam_id, ExamAttempt.score_percent)
+            .filter(
+                ExamAttempt.user_id == current_user.id,
+                ExamAttempt.exam_id.in_([e.id for e in exams]),
+                ExamAttempt.passed.is_(True),
+            )
+            .all()
+        )
+        for exam_id, score in rows:
+            passed_exam_ids.add(exam_id)
+            best_score_by_exam[exam_id] = max(best_score_by_exam.get(exam_id, 0.0), score or 0.0)
+
+    exam_summaries: list[ExamSummaryOut] = []
+    for exam in exams:
+        summary = ExamSummaryOut.model_validate(exam)
+        summary.question_count = db.query(Question).filter(Question.exam_id == exam.id).count()
+        if current_user.role == UserRole.student:
+            summary.passed = exam.id in passed_exam_ids
+            summary.best_score_percent = best_score_by_exam.get(exam.id) if exam.id in passed_exam_ids else None
+        exam_summaries.append(summary)
+    out.exams = exam_summaries
+
+    if current_user.role != UserRole.student or not exams:
+        return
+
+    lessons_by_id = {lesson.id: lesson for lesson in course.lessons}
+    for lesson_out in out.lessons:
+        lesson = lessons_by_id.get(lesson_out.id)
+        if lesson is None or lesson.exempt_from_exam_gate:
+            continue
+        gating = [e for e in exams if e.order_index < lesson.order_index]
+        if gating and not all(e.id in passed_exam_ids for e in gating):
+            lesson_out.locked_by_exam = True
 
 
 @router.post("", response_model=CourseOut, status_code=201)

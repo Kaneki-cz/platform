@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,18 @@ class Lesson(Base):
     # view_count/bonus_views). Requires migrate_v7_view_limits.py on an
     # existing database.
     max_views: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Admin/instructor escape hatch for the standalone-exam gate (see
+    # app/models/exam.py): when True, this lecture stays reachable even
+    # though a standalone Exam earlier in the same course (lower
+    # order_index) hasn't been passed yet by the current student. False by
+    # default for every lesson, so the gate applies everywhere an exam
+    # exists unless someone explicitly opts a lecture out. Enforced in
+    # app/services/exam_gate.py, used by both app/api/routes/courses.py
+    # (the chapter/lecture LIST) and app/api/routes/lessons.py (single
+    # lecture fetch, which withholds video_url the same way it does for
+    # max_views/access codes). Requires migrate_v9_exams.py on an existing
+    # database.
+    exempt_from_exam_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     course: Mapped["Course"] = relationship(back_populates="lessons")

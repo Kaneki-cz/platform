@@ -11,7 +11,7 @@ from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.user import User, UserRole
 from app.schemas.course import LessonCreate, LessonDetailOut, LessonUpdate
-from app.services import b2_storage
+from app.services import b2_storage, exam_gate
 
 router = APIRouter(prefix="/api/v1/lessons", tags=["lessons"])
 
@@ -32,6 +32,18 @@ def get_lesson(
     view_limit_reached = False
     requires_code = False
     code_unlocked = True
+    locked_by_exam = False
+
+    # Same staff-exempt, opt-in-per-lesson policy as the other gates below —
+    # see app/services/exam_gate.py. Checked first so a locked lesson never
+    # falls through to the code/view-count logic and silently burns a view
+    # or requires a code before the exam gate is even satisfied.
+    if current_user.role == UserRole.student:
+        locked_by_exam = exam_gate.is_locked_by_exam(
+            db, current_user.id, lesson.course_id, lesson.order_index, lesson.exempt_from_exam_gate
+        )
+        if locked_by_exam:
+            video_url = None
 
     # Same staff-exempt policy as max_views below: only a student can ever be
     # gated by a code, and only for a lecture an instructor/admin actually
@@ -67,6 +79,7 @@ def get_lesson(
         and lesson.max_views is not None
         and lesson.video_url
         and (not requires_code or code_unlocked)
+        and not locked_by_exam
     ):
         entry = (
             db.query(LessonProgress)
@@ -103,6 +116,8 @@ def get_lesson(
         view_limit_reached=view_limit_reached,
         requires_code=requires_code,
         code_unlocked=code_unlocked,
+        locked_by_exam=locked_by_exam,
+        exempt_from_exam_gate=lesson.exempt_from_exam_gate,
     )
 
 
@@ -129,6 +144,7 @@ def create_lesson(
         video_url=payload.video_url,
         order_index=payload.order_index,
         max_views=payload.max_views,
+        exempt_from_exam_gate=payload.exempt_from_exam_gate,
     )
     db.add(lesson)
     db.commit()

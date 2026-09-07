@@ -9,10 +9,24 @@ from app.db.database import Base
 
 
 class Question(Base):
+    """A single question — belongs to EXACTLY ONE of a Lesson (an in-video
+    segment quiz, the original use of this table) or an Exam (a standalone
+    exam question, added alongside app/models/exam.py). Both lesson_id and
+    exam_id are nullable for this reason; every route that creates/updates
+    a question (app/api/routes/questions.py) enforces exactly one being set
+    — the DB layer doesn't add a CHECK constraint for this since SQLite-style
+    simplicity was preferred for the hand-written migrations here, but every
+    write path is trusted to keep the invariant.
+
+    Requires migrate_v9_exams.py on an existing database (adds exam_id and
+    makes lesson_id nullable).
+    """
+
     __tablename__ = "questions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lesson_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lessons.id"), nullable=False)
+    lesson_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("lessons.id"), nullable=True)
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("exams.id"), nullable=True)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     question_type: Mapped[str] = mapped_column(String(50), default="multiple_choice")  # or "numeric", "free_response"
     choices: Mapped[dict] = mapped_column(JSONB, nullable=True)  # for multiple_choice
@@ -24,11 +38,13 @@ class Question(Base):
     # specific pause point" (shown once the video ends instead — see
     # app/api/routes/courses.py's segment-grouping for how this is used to
     # gate progression: a lesson's next sibling is locked until every one of
-    # its segments is passed at >=75%). Requires
-    # migrate_v5_question_segments.py on an existing database.
+    # its segments is passed at >=75%). Meaningless for an exam question
+    # (exam_id set) — exams are answered all at once, not paused into parts.
+    # Requires migrate_v5_question_segments.py on an existing database.
     pause_at_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    lesson: Mapped["Lesson"] = relationship(back_populates="questions")
+    lesson: Mapped["Lesson | None"] = relationship(back_populates="questions")
+    exam: Mapped["Exam | None"] = relationship(back_populates="questions")
     attempts: Mapped[list["QuestionAttempt"]] = relationship(back_populates="question", cascade="all, delete-orphan")
 
 
@@ -38,9 +54,17 @@ class QuestionAttempt(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     question_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("questions.id"), nullable=False)
+    # Set only when this answer was submitted as part of a standalone exam
+    # sitting (see app/models/exam.py's ExamAttempt) rather than an in-video
+    # segment quiz — groups this row together with the rest of that same
+    # sitting's answers so a score/duration can be computed for the exam as
+    # a whole. NULL for every existing/segment-quiz row, unaffected by this
+    # feature. Requires migrate_v9_exams.py on an existing database.
+    exam_attempt_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("exam_attempts.id"), nullable=True, index=True)
     submitted_answer: Mapped[str] = mapped_column(String(500), nullable=False)
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="question_attempts")
     question: Mapped["Question"] = relationship(back_populates="attempts")
+    exam_attempt: Mapped["ExamAttempt | None"] = relationship(back_populates="answers")
