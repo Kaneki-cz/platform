@@ -32,6 +32,16 @@ class Question(Base):
     choices: Mapped[dict] = mapped_column(JSONB, nullable=True)  # for multiple_choice
     correct_answer: Mapped[str] = mapped_column(String(500), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=True)
+    # An optional diagram/photo of the physics problem this question is
+    # about — same storage convention as Lesson.video_url / TeacherProfile
+    # photo_url / Course.cover_image_url: a real http(s) link, a legacy
+    # relative /media/ path, or a private "b2:<key>" marker exchanged for a
+    # signed URL by lib/api.ts's resolveFileUrl on the client. NULL for a
+    # question with no accompanying image (the common case). Cleaned up from
+    # R2 on replace/delete via b2_storage.delete_object_for_url, mirroring
+    # lessons.py's video_url handling. Requires migrate_v10_question_images.py
+    # on an existing database.
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Second into the lecture's video where playback should pause and this
     # question's segment-quiz should appear — every question sharing the
     # same value belongs to the same "part" of the lecture. NULL means "no

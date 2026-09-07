@@ -46,6 +46,7 @@ class ExamQuestionForStudent(BaseModel):
     prompt: str
     question_type: str
     choices: dict | list | None = None
+    image_url: str | None = None
 
     model_config = {"from_attributes": True}
 

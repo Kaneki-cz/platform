@@ -34,6 +34,7 @@ class QuestionOut(BaseModel):
     question_type: str
     choices: dict | list | None = None
     pause_at_seconds: int | None = None
+    image_url: str | None = None
     your_attempt: QuestionAttemptOut | None = None
 
     model_config = {"from_attributes": True}
@@ -53,6 +54,7 @@ class QuestionAdminOut(BaseModel):
     correct_answer: str
     explanation: str | None = None
     pause_at_seconds: int | None = None
+    image_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +85,7 @@ class QuestionCreate(BaseModel):
     correct_answer: str
     explanation: str | None = None
     pause_at_seconds: int | None = None
+    image_url: str | None = None
 
 
 class QuestionUpdate(BaseModel):
@@ -92,3 +95,4 @@ class QuestionUpdate(BaseModel):
     correct_answer: str | None = None
     explanation: str | None = None
     pause_at_seconds: int | None = None
+    image_url: str | None = None

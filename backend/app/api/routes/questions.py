@@ -21,6 +21,7 @@ from app.models.exam import Exam
 from app.models.lesson import Lesson
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
+from app.services import b2_storage
 from app.schemas.question import (
     QuestionAdminOut,
     QuestionAttemptCreate,
@@ -206,6 +207,7 @@ def create_question(
         correct_answer=payload.correct_answer,
         explanation=payload.explanation,
         pause_at_seconds=payload.pause_at_seconds,
+        image_url=payload.image_url,
     )
     db.add(question)
     db.commit()
@@ -225,10 +227,22 @@ def update_question(
         raise HTTPException(status_code=404, detail="Question not found")
     ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    # Captured before the field is overwritten below — this is the image
+    # that's about to be replaced (or cleared), if any. Only actually stale
+    # (and worth deleting from R2) once the new value is different AND the
+    # commit below succeeds; see the cleanup call after db.commit() —
+    # mirrors lessons.py's update_lesson video_url handling.
+    old_image_url = question.image_url if "image_url" in fields else None
+
+    for field, value in fields.items():
         setattr(question, field, value)
     db.commit()
     db.refresh(question)
+
+    if old_image_url is not None and old_image_url != question.image_url:
+        b2_storage.delete_object_for_url(old_image_url)
+
     return question
 
 
@@ -242,5 +256,7 @@ def delete_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
+    image_url = question.image_url
     db.delete(question)
     db.commit()
+    b2_storage.delete_object_for_url(image_url)
