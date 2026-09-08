@@ -15,7 +15,7 @@ import {
   updateQuestion,
   uploadImage,
 } from '@/lib/api';
-import { colors, radius, spacing } from '@/constants/theme';
+import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import type { LessonDetail, QuestionAdmin } from '@/lib/types';
 
 const CHOICE_KEYS = ['A', 'B', 'C', 'D'] as const;
@@ -25,6 +25,10 @@ const CHOICE_KEYS = ['A', 'B', 'C', 'D'] as const;
 // through from the picker's own asset instead of re-probed later.
 type CropTarget = { rawUri: string; width: number; height: number } | null;
 
+// Same redesign pass as app/admin/exam/[id].tsx (identical form shape,
+// just for a lecture's segment-quiz questions instead of an exam's) — see
+// that file's comment for the reasoning. Only real difference here is the
+// extra "Pause at" field, which gets its own section too.
 export default function ManageLessonQuestionsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
@@ -183,7 +187,12 @@ export default function ManageLessonQuestionsScreen() {
       keyExtractor={(q) => q.id}
       ListHeaderComponent={
         <>
-          <Text style={styles.title}>{lesson.title} — Quiz Questions</Text>
+          <View style={styles.eyebrow}>
+            <Text style={styles.eyebrowText} numberOfLines={1}>
+              🎬 {lesson.title}
+            </Text>
+          </View>
+          <Text style={styles.title}>Quiz Questions</Text>
           <Text style={styles.hint}>
             Questions sharing the same "pause at" second appear together as one mini-quiz when the video reaches
             that point. Leave "pause at" empty to show a question once the video ends instead. A student must score
@@ -192,56 +201,78 @@ export default function ManageLessonQuestionsScreen() {
         </>
       }
       renderItem={({ item, index }) => (
-        <View style={[styles.row, editingId === item.id && styles.rowEditing]}>
-          <Pressable style={{ flex: 1 }} onPress={() => onEditPress(item)}>
-            <Text style={styles.rowTitle}>
-              {index + 1}. {item.prompt}
-            </Text>
-            <Text style={styles.rowMeta}>
-              {item.question_type === 'multiple_choice' ? 'Multiple choice' : 'Text answer'} · pause at{' '}
-              {item.pause_at_seconds != null ? `${item.pause_at_seconds}s` : 'end of video'}
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => onDelete(item.id)}>
-            <Text style={styles.removeText}>Delete</Text>
-          </Pressable>
-        </View>
+        <Pressable style={[styles.card, editingId === item.id && styles.cardEditing]} onPress={() => onEditPress(item)}>
+          <View style={styles.cardTop}>
+            <View style={[styles.badge, item.question_type !== 'multiple_choice' && styles.badgeText]}>
+              <Text style={styles.badgeIcon}>{item.question_type === 'multiple_choice' ? '🔘' : '✏️'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardPrompt} numberOfLines={2}>
+                {index + 1}. {item.prompt}
+              </Text>
+              <View style={styles.chipsRow}>
+                <Text style={styles.chip}>
+                  {item.question_type === 'multiple_choice' ? 'Multiple choice' : 'Text answer'}
+                </Text>
+                <Text style={[styles.chip, styles.chipPause]}>
+                  ⏱ {item.pause_at_seconds != null ? `${item.pause_at_seconds}s` : 'end of video'}
+                </Text>
+              </View>
+            </View>
+            <Pressable style={styles.deleteIconButton} onPress={() => onDelete(item.id)} hitSlop={8}>
+              <Text style={styles.deleteIconText}>🗑</Text>
+            </Pressable>
+          </View>
+        </Pressable>
       )}
       ListEmptyComponent={<Text style={styles.empty}>No quiz questions yet — add one below.</Text>}
       ListFooterComponent={
-        <>
-          <Text style={styles.label}>{editingId ? 'Editing question' : 'Add a question'}</Text>
+        <View style={[styles.formCard, { marginTop: questions.length ? 16 : 4 }]}>
+          {editingId ? (
+            <View style={styles.editBanner}>
+              <Text style={styles.editBannerText}>✏️ Editing question {questions.findIndex((q) => q.id === editingId) + 1}</Text>
+            </View>
+          ) : (
+            <Text style={styles.formTitle}>➕ Add a question</Text>
+          )}
 
-          <View style={styles.typeToggle}>
-            <Pressable
-              style={[styles.typeButton, questionType === 'multiple_choice' && styles.typeButtonActive]}
-              onPress={() => setQuestionType('multiple_choice')}
-            >
-              <Text style={[styles.typeButtonText, questionType === 'multiple_choice' && styles.typeButtonTextActive]}>
-                Multiple choice
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.typeButton, questionType === 'free_response' && styles.typeButtonActive]}
-              onPress={() => setQuestionType('free_response')}
-            >
-              <Text style={[styles.typeButtonText, questionType === 'free_response' && styles.typeButtonTextActive]}>
-                Text answer
-              </Text>
-            </Pressable>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>🔀 Question type</Text>
+            <View style={styles.typeToggle}>
+              <Pressable
+                style={[styles.typeButton, questionType === 'multiple_choice' && styles.typeButtonActive]}
+                onPress={() => setQuestionType('multiple_choice')}
+              >
+                <Text style={[styles.typeButtonText, questionType === 'multiple_choice' && styles.typeButtonTextActive]}>
+                  Multiple choice
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.typeButton, questionType === 'free_response' && styles.typeButtonActive]}
+                onPress={() => setQuestionType('free_response')}
+              >
+                <Text style={[styles.typeButtonText, questionType === 'free_response' && styles.typeButtonTextActive]}>
+                  Text answer
+                </Text>
+              </Pressable>
+            </View>
           </View>
 
-          <MathSymbolInput
-            style={[styles.input, styles.multiline]}
-            placeholder="Question prompt (supports $math$ and **bold**)"
-            placeholderTextColor="#9ca3af"
-            multiline
-            value={prompt}
-            onChangeText={setPrompt}
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>❓ Question prompt</Text>
+            <MathSymbolInput
+              style={[styles.input, styles.multiline]}
+              placeholder="Question prompt (supports $math$ and **bold**)"
+              placeholderTextColor={colors.textFaint}
+              multiline
+              value={prompt}
+              onChangeText={setPrompt}
+            />
+          </View>
 
           {questionType === 'multiple_choice' ? (
-            <>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>☑️ Choices — tap the correct letter</Text>
               {CHOICE_KEYS.map((key) => (
                 <View key={key} style={styles.choiceInputRow}>
                   <Pressable
@@ -256,74 +287,85 @@ export default function ManageLessonQuestionsScreen() {
                     <MathSymbolInput
                       style={styles.input}
                       placeholder={`Choice ${key}`}
-                      placeholderTextColor="#9ca3af"
+                      placeholderTextColor={colors.textFaint}
                       value={choiceTexts[key]}
                       onChangeText={(v) => setChoiceTexts((prev) => ({ ...prev, [key]: v }))}
                     />
                   </View>
+                  {correctChoice === key ? <Text style={styles.correctTag}>✓ correct</Text> : null}
                 </View>
               ))}
-              <Text style={styles.hint}>Tap the letter next to the correct choice.</Text>
-            </>
+            </View>
           ) : (
-            <MathSymbolInput
-              style={styles.input}
-              placeholder="Correct answer"
-              placeholderTextColor="#9ca3af"
-              value={correctAnswer}
-              onChangeText={setCorrectAnswer}
-            />
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>✅ Correct answer</Text>
+              <MathSymbolInput
+                style={styles.input}
+                placeholder="Correct answer"
+                placeholderTextColor={colors.textFaint}
+                value={correctAnswer}
+                onChangeText={setCorrectAnswer}
+              />
+            </View>
           )}
 
-          <MathSymbolInput
-            style={[styles.input, styles.multiline]}
-            placeholder="Explanation shown after answering (optional, supports $math$)"
-            placeholderTextColor="#9ca3af"
-            multiline
-            value={explanation}
-            onChangeText={setExplanation}
-          />
-
-          <Text style={styles.imageLabel}>Diagram / photo of the problem (optional)</Text>
-          {imagePreview || imageUrl ? (
-            <View style={styles.imagePreviewWrap}>
-              {imagePreview ? (
-                <Image source={{ uri: imagePreview }} style={styles.imagePreview} />
-              ) : (
-                <ResolvedImage url={imageUrl} style={styles.imagePreview} containerStyle={styles.imagePreview} />
-              )}
-            </View>
-          ) : null}
-          <View style={styles.imageActionsRow}>
-            <Pressable style={styles.imageButton} onPress={pickImage} disabled={uploadingImage}>
-              {uploadingImage ? (
-                <ActivityIndicator color={colors.primary} size="small" />
-              ) : (
-                <Text style={styles.imageButtonText}>{imageUrl ? 'Change image' : 'Add image'}</Text>
-              )}
-            </Pressable>
-            {imageUrl ? (
-              <Pressable
-                style={styles.imageButton}
-                onPress={() => {
-                  setImageUrl(null);
-                  setImagePreview(null);
-                }}
-                disabled={uploadingImage}
-              >
-                <Text style={styles.imageRemoveText}>Remove</Text>
-              </Pressable>
-            ) : null}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>💡 Explanation (optional)</Text>
+            <MathSymbolInput
+              style={[styles.input, styles.multiline]}
+              placeholder="Shown after answering (optional, supports $math$)"
+              placeholderTextColor={colors.textFaint}
+              multiline
+              value={explanation}
+              onChangeText={setExplanation}
+            />
           </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Pause at (seconds into the video, optional)"
-            placeholderTextColor="#9ca3af"
-            keyboardType="number-pad"
-            value={pauseAtSeconds}
-            onChangeText={setPauseAtSeconds}
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>🖼 Diagram / photo (optional)</Text>
+            {imagePreview || imageUrl ? (
+              <View style={styles.imagePreviewWrap}>
+                {imagePreview ? (
+                  <Image source={{ uri: imagePreview }} style={styles.imagePreview} />
+                ) : (
+                  <ResolvedImage url={imageUrl} style={styles.imagePreview} containerStyle={styles.imagePreview} />
+                )}
+              </View>
+            ) : null}
+            <View style={styles.imageActionsRow}>
+              <Pressable style={styles.imageButton} onPress={pickImage} disabled={uploadingImage}>
+                {uploadingImage ? (
+                  <ActivityIndicator color={colors.primary} size="small" />
+                ) : (
+                  <Text style={styles.imageButtonText}>{imageUrl ? '🔁 Change image' : '＋ Add image'}</Text>
+                )}
+              </Pressable>
+              {imageUrl ? (
+                <Pressable
+                  style={styles.imageButton}
+                  onPress={() => {
+                    setImageUrl(null);
+                    setImagePreview(null);
+                  }}
+                  disabled={uploadingImage}
+                >
+                  <Text style={styles.imageRemoveText}>Remove</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={[styles.section, { marginBottom: 0 }]}>
+            <Text style={styles.sectionLabel}>⏱ Pause at (seconds into the video, optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Leave empty to show at the end of the video"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="number-pad"
+              value={pauseAtSeconds}
+              onChangeText={setPauseAtSeconds}
+            />
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.formActions}>
@@ -336,11 +378,11 @@ export default function ManageLessonQuestionsScreen() {
               {submitting ? (
                 <ActivityIndicator color={colors.onPrimary} />
               ) : (
-                <Text style={styles.buttonText}>{editingId ? 'Save Changes' : 'Add Question'}</Text>
+                <Text style={styles.buttonText}>{editingId ? '💾 Save Changes' : '＋ Add Question'}</Text>
               )}
             </Pressable>
           </View>
-        </>
+        </View>
       }
     />
     <ImageCropModal
@@ -358,33 +400,102 @@ export default function ManageLessonQuestionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: spacing.sm, color: colors.text },
-  hint: { fontSize: 12, color: colors.textFaint, marginBottom: 14, lineHeight: 17 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+
+  eyebrow: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent + '24',
+    borderRadius: radius.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginBottom: spacing.sm,
+    maxWidth: '100%',
   },
-  rowEditing: { backgroundColor: colors.primary + '14', borderRadius: radius.md, paddingHorizontal: 8 },
-  rowTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
-  rowMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  removeText: { color: colors.danger, fontWeight: '600' },
-  empty: { color: colors.textFaint, marginVertical: 20 },
-  label: { fontSize: 14, color: colors.textMuted, marginTop: 16, marginBottom: 10 },
-  typeToggle: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  typeButton: {
-    flex: 1,
+  eyebrowText: { color: colors.accent, fontSize: 12, fontFamily: fonts.bold },
+  title: { fontSize: 22, fontFamily: fonts.bold, marginBottom: spacing.xs, color: colors.text },
+  hint: { fontSize: 12, color: colors.textFaint, marginBottom: spacing.md, lineHeight: 18, fontFamily: fonts.regular },
+
+  card: {
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: 10,
-    alignItems: 'center',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...cardShadow,
   },
-  typeButtonActive: { borderColor: colors.primary, backgroundColor: colors.primary + '14' },
-  typeButtonText: { color: colors.textMuted, fontWeight: '600' },
-  typeButtonTextActive: { color: colors.primary },
+  cardEditing: { borderColor: colors.primary },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  badge: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.violet + '2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { backgroundColor: colors.primary + '20' },
+  badgeIcon: { fontSize: 15 },
+  cardPrompt: { fontSize: 13, color: colors.text, marginBottom: 6, lineHeight: 18, fontFamily: fonts.regular },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    alignSelf: 'flex-start',
+    fontSize: 10.5,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingVertical: 2,
+    paddingHorizontal: 9,
+    overflow: 'hidden',
+  },
+  chipPause: { color: colors.accent, borderColor: colors.accent + '59', backgroundColor: colors.accent + '1A' },
+  deleteIconButton: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.pill,
+    backgroundColor: colors.dangerSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteIconText: { fontSize: 13 },
+  empty: { color: colors.textFaint, marginVertical: 20, fontFamily: fonts.regular },
+
+  formCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  formTitle: { fontSize: 14, fontFamily: fonts.bold, color: colors.text, marginBottom: spacing.sm },
+  editBanner: {
+    backgroundColor: colors.accent + '1F',
+    borderWidth: 1,
+    borderColor: colors.accent + '59',
+    borderRadius: radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: spacing.sm,
+  },
+  editBannerText: { color: colors.accent, fontSize: 12.5, fontFamily: fonts.bold },
+
+  section: { marginBottom: spacing.md },
+  sectionLabel: { fontSize: 11.5, fontFamily: fonts.bold, color: colors.textMuted, marginBottom: spacing.sm },
+
+  typeToggle: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 4,
+  },
+  typeButton: { flex: 1, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center' },
+  typeButtonActive: { backgroundColor: colors.primary },
+  typeButtonText: { color: colors.textMuted, fontFamily: fonts.semiBold, fontSize: 12.5 },
+  typeButtonTextActive: { color: colors.onPrimary },
+
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -393,18 +504,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 10,
     color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
   },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
-  imageLabel: { fontSize: 13, color: colors.textMuted, marginBottom: 8 },
   imagePreviewWrap: { marginBottom: 10 },
   imagePreview: {
     width: '100%',
     height: 160,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
   },
-  imageActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  imageActionsRow: { flexDirection: 'row', gap: 10 },
   imageButton: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -414,8 +524,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  imageButtonText: { color: colors.primary, fontWeight: '600' },
-  imageRemoveText: { color: colors.danger, fontWeight: '600' },
+  imageButtonText: { color: colors.primary, fontFamily: fonts.semiBold },
+  imageRemoveText: { color: colors.danger, fontFamily: fonts.semiBold },
   choiceInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   choiceKeyButton: {
     width: 36,
@@ -423,25 +533,37 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
-  choiceKeyButtonActive: { borderColor: colors.success, backgroundColor: colors.success + '1A' },
-  choiceKeyText: { color: colors.textMuted, fontWeight: '700' },
+  choiceKeyButtonActive: { borderColor: colors.success, backgroundColor: colors.success + '2A' },
+  choiceKeyText: { color: colors.textMuted, fontFamily: fonts.bold },
   choiceKeyTextActive: { color: colors.success },
   choiceInput: { flex: 1 },
-  formActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  formActionsButton: { flex: 1, marginBottom: 0 },
+  correctTag: {
+    color: colors.success,
+    fontSize: 9.5,
+    fontFamily: fonts.bold,
+    backgroundColor: colors.success + '1F',
+    borderRadius: radius.pill,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    marginBottom: 10,
+  },
+  formActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  formActionsButton: { flex: 1.4, marginBottom: 0 },
   cancelButton: {
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: 20,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  cancelButtonText: { color: colors.textMuted, fontWeight: '600' },
-  button: { backgroundColor: colors.primary, borderRadius: radius.md, padding: 14, alignItems: 'center', marginBottom: 20 },
-  buttonText: { color: colors.onPrimary, fontWeight: '600', fontSize: 16 },
-  error: { color: colors.danger, marginBottom: 10 },
+  cancelButtonText: { color: colors.textMuted, fontFamily: fonts.semiBold },
+  button: { backgroundColor: colors.primary, borderRadius: radius.md, padding: 14, alignItems: 'center' },
+  buttonText: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 16 },
+  error: { color: colors.danger, marginBottom: 10, fontFamily: fonts.regular },
 });

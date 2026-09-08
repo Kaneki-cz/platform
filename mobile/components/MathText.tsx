@@ -1,15 +1,25 @@
 import React from 'react';
-import { Platform, Text, TextStyle } from 'react-native';
+import { Text, TextStyle } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
 
 // A real textbook renders math in a serif face with variables/Greek
 // letters in italic and numbers/operators upright — that convention alone
 // is a big part of what makes typeset math read as "real" rather than
-// plain sans-serif prose with some characters colored in. RN's "serif"
-// generic family is Android-only; iOS needs an actual font name.
-const MATH_FONT = Platform.OS === 'ios' ? 'Georgia' : 'serif';
+// plain sans-serif prose with some characters colored in. Tinos (see
+// constants/theme.ts's fonts.serifBold) is what actually gets loaded here —
+// a real font file bundled by the app, so it's identical on iOS and
+// Android, unlike relying on a platform system font name.
+const MATH_FONT = fonts.serifBold;
 const LETTER_RE = /[A-Za-zΑ-Ωα-ω]/;
+// Any run of plain Latin letters/digits — a unit, a brand/proper name, a
+// number, an English word sitting inside an otherwise-Arabic sentence — so
+// it renders in fonts.serif/serifBold (Tinos) instead of the app's default
+// Cairo, same as the user asked: "any English text, whether letters or
+// numbers, in Times New Roman". Deliberately narrower than LETTER_RE above
+// (no Greek here) — Greek symbols only ever show up inside $...$ math
+// spans, which already get the serif treatment as a whole piece.
+const LATIN_RE = /[A-Za-z0-9]/;
 
 /**
  * Renders text that may contain inline LaTeX math delimited by single (or
@@ -109,20 +119,53 @@ export function MathText({
 function renderNode(node: InlineNode, idx: number, color: string, defaultBold = false) {
   if (node.type === 'break') return node.paragraph ? '\n\n' : '\n';
   if (node.type === 'text') {
+    const bold = node.bold || defaultBold;
     return (
-      <Text key={idx} style={{ color, fontFamily: node.bold || defaultBold ? fonts.bold : fonts.regular }}>
-        {node.value}
+      <Text key={idx} style={{ color }}>
+        {splitLatinRuns(node.value).map((r, j) => (
+          <Text key={j} style={{ fontFamily: r.latin ? (bold ? fonts.serifBold : fonts.serif) : bold ? fonts.bold : fonts.regular }}>
+            {r.text}
+          </Text>
+        ))}
       </Text>
     );
   }
   const isBlank = !node.pieces.some((p) => p.text.trim());
   return (
-    <Text key={idx} style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT, fontWeight: '600' }}>
+    <Text key={idx} style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT }}>
       {LRI}
       {renderPieces(node.pieces)}
       {PDI}
     </Text>
   );
+}
+
+/** Splits a plain-prose run into alternating Latin-letter/digit and
+ * everything-else (Arabic, punctuation, spaces, …) sub-runs, so an English
+ * word or number sitting inside an Arabic sentence — "استخدم Newton
+ * الثاني" — renders in fonts.serif/serifBold (Tinos) while the surrounding
+ * Arabic stays in Cairo. Same idea as splitItalicRuns below, just deciding
+ * a font family instead of an italic flag, and only for plain text nodes —
+ * a math span already renders as one uniform serif piece regardless. */
+function splitLatinRuns(s: string): { text: string; latin: boolean }[] {
+  const out: { text: string; latin: boolean }[] = [];
+  let current = '';
+  let currentLatin: boolean | null = null;
+  for (const ch of s) {
+    const isLatin = LATIN_RE.test(ch);
+    if (currentLatin === null) {
+      currentLatin = isLatin;
+      current = ch;
+    } else if (isLatin === currentLatin) {
+      current += ch;
+    } else {
+      out.push({ text: current, latin: currentLatin });
+      current = ch;
+      currentLatin = isLatin;
+    }
+  }
+  if (current) out.push({ text: current, latin: currentLatin ?? false });
+  return out;
 }
 
 /** Splits a run of math text into alternating italic (letters — Latin or

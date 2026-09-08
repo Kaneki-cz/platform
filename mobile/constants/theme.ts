@@ -75,6 +75,17 @@ export const fonts = {
   medium: 'Cairo_500Medium',
   semiBold: 'Cairo_600SemiBold',
   bold: 'Cairo_700Bold',
+  // Any run of English letters/digits (a formula, a unit, a plain English
+  // word sitting inside an Arabic sentence) renders in this instead of
+  // Cairo — see MathText.tsx's splitLatinRuns. Tinos (Google Fonts) rather
+  // than the literal "Times New Roman" font file: it's metrically
+  // compatible with Times New Roman (same look, same widths) but is a free
+  // font Expo can actually bundle and load identically on iOS *and*
+  // Android — "Times New Roman" itself is a real, loadable font name on iOS
+  // but isn't a system font Android ships at all, so pinning to that exact
+  // name would silently fall back to Roboto on Android only.
+  serif: 'Tinos_400Regular',
+  serifBold: 'Tinos_700Bold',
 } as const;
 
 export const radius = {

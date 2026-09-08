@@ -1,4 +1,5 @@
 import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold, useFonts } from '@expo-google-fonts/cairo';
+import { Tinos_400Regular, Tinos_700Bold } from '@expo-google-fonts/tinos';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
@@ -80,6 +81,11 @@ export default function RootLayout() {
     Cairo_500Medium,
     Cairo_600SemiBold,
     Cairo_700Bold,
+    // Tinos — the free, metrically Times-New-Roman-compatible face used for
+    // any English/Latin run (see constants/theme.ts's fonts.serif/serifBold
+    // and MathText.tsx's splitLatinRuns).
+    Tinos_400Regular,
+    Tinos_700Bold,
   });
 
   useEffect(() => {
