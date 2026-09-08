@@ -40,6 +40,16 @@ class Lesson(Base):
     # max_views/access codes). Requires migrate_v9_exams.py on an existing
     # database.
     exempt_from_exam_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Optional poster-style cover image for this lecture, shown on the
+    # student-facing chapter screen exactly the same way Course.cover_image_url
+    # is shown on the subject screen (same b2:<key> / http(s):// / /media/...
+    # convention, resolved client-side via lib/api.ts's resolveFileUrl).
+    # NULL for a lecture with no cover set (the common case for existing
+    # content) — the mobile grid falls back to a plain placeholder tile.
+    # Cleaned up from R2 on replace/delete via b2_storage.delete_object_for_url,
+    # mirroring how video_url is handled just below. Requires
+    # migrate_v11_lesson_cover_images.py on an existing database.
+    cover_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     course: Mapped["Course"] = relationship(back_populates="lessons")

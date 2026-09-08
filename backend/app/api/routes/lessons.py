@@ -109,6 +109,7 @@ def get_lesson(
         title=lesson.title,
         content=lesson.content,
         video_url=video_url,
+        cover_image_url=lesson.cover_image_url,
         order_index=lesson.order_index,
         max_views=lesson.max_views,
         views_used=views_used,
@@ -142,6 +143,7 @@ def create_lesson(
         title=payload.title,
         content=payload.content,
         video_url=payload.video_url,
+        cover_image_url=payload.cover_image_url,
         order_index=payload.order_index,
         max_views=payload.max_views,
         exempt_from_exam_gate=payload.exempt_from_exam_gate,
@@ -165,11 +167,12 @@ def update_lesson(
     ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
 
     fields = payload.model_dump(exclude_unset=True)
-    # Captured before the field is overwritten below — this is the video
-    # that's about to be replaced, if any. Only actually stale (and worth
-    # deleting from R2) once the new value is different AND the commit
-    # below succeeds; see the cleanup call after db.commit().
+    # Captured before the field is overwritten below — these are the video
+    # and/or cover image about to be replaced, if any. Only actually stale
+    # (and worth deleting from R2) once the new value is different AND the
+    # commit below succeeds; see the cleanup calls after db.commit().
     old_video_url = lesson.video_url if "video_url" in fields else None
+    old_cover_image_url = lesson.cover_image_url if "cover_image_url" in fields else None
 
     for field, value in fields.items():
         setattr(lesson, field, value)
@@ -178,6 +181,8 @@ def update_lesson(
 
     if old_video_url is not None and old_video_url != lesson.video_url:
         b2_storage.delete_object_for_url(old_video_url)
+    if old_cover_image_url is not None and old_cover_image_url != lesson.cover_image_url:
+        b2_storage.delete_object_for_url(old_cover_image_url)
 
     return lesson
 
@@ -193,6 +198,8 @@ def delete_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
     ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
     video_url = lesson.video_url
+    cover_image_url = lesson.cover_image_url
     db.delete(lesson)
     db.commit()
     b2_storage.delete_object_for_url(video_url)
+    b2_storage.delete_object_for_url(cover_image_url)

@@ -20,6 +20,10 @@ class LessonOut(BaseModel):
     id: uuid.UUID
     title: str
     video_url: str | None = None
+    # Same b2:<key> / http(s):// / /media/... convention as Course.cover_image_url
+    # — lets the chapter screen render lectures as poster cards the same way
+    # the subject screen renders chapters. None = show a placeholder tile.
+    cover_image_url: str | None = None
     order_index: int
     # True when this lesson has no segment quizzes, or the current user has
     # passed every one of them (>=75% correct on their latest attempts) —
@@ -82,6 +86,7 @@ class LessonCreate(BaseModel):
     title: str
     content: str | None = None
     video_url: str | None = None
+    cover_image_url: str | None = None
     order_index: int = 0
     max_views: int | None = None
     exempt_from_exam_gate: bool = False
@@ -91,6 +96,7 @@ class LessonUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     video_url: str | None = None
+    cover_image_url: str | None = None
     order_index: int | None = None
     max_views: int | None = None
     exempt_from_exam_gate: bool | None = None
