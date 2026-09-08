@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text,
 
 import { ImageCropModal } from '@/components/ImageCropPicker';
 import { MathSymbolInput } from '@/components/MathSymbolInput';
+import { MathText } from '@/components/MathText';
 import { ResolvedImage } from '@/components/ResolvedImage';
 import {
   ApiError,
@@ -208,9 +209,13 @@ export default function ManageLessonQuestionsScreen() {
               <Text style={styles.badgeIcon}>{item.question_type === 'multiple_choice' ? '🔘' : '✏️'}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardPrompt} numberOfLines={2}>
-                {index + 1}. {item.prompt}
-              </Text>
+              <MathText
+                text={`${index + 1}. ${item.prompt}`}
+                color={colors.text}
+                fontSize={13}
+                numberOfLines={2}
+                style={styles.cardPrompt}
+              />
               <View style={styles.chipsRow}>
                 <Text style={styles.chip}>
                   {item.question_type === 'multiple_choice' ? 'Multiple choice' : 'Text answer'}

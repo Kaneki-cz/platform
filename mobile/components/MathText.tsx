@@ -77,6 +77,7 @@ export function MathText({
   fontSize = 15,
   style,
   bold = false,
+  numberOfLines,
 }: {
   text: string;
   color?: string;
@@ -88,12 +89,17 @@ export function MathText({
    * **bold** stays bold either way; this only changes what the OTHERWISE
    * plain runs render as. */
   bold?: boolean;
+  /** Passed straight through to the outer <Text> — lets a preview/list-row
+   * usage (e.g. a question card showing its own prompt) truncate with an
+   * ellipsis instead of pushing the layout, same as any other <Text>. */
+  numberOfLines?: number;
 }) {
   const nodes = buildInlineNodes(text);
   const rtl = isRtlText(text);
 
   return (
     <Text
+      numberOfLines={numberOfLines}
       style={[
         {
           color,
