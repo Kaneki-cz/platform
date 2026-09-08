@@ -106,11 +106,30 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     if (btn.kind === 'insert') {
       nextText = before + btn.value + after;
       nextCursor = start + btn.value.length;
-    } else {
+    } else if (selected) {
+      // Real selection: wrap it, cursor lands right after the closing
+      // marker — an "end of what was just inserted" position, which RN's
+      // controlled `selection` prop places reliably.
       nextText = before + btn.open + selected + btn.close + after;
-      nextCursor = selected
-        ? start + btn.open.length + selected.length + btn.close.length
-        : start + btn.open.length;
+      nextCursor = start + btn.open.length + selected.length + btn.close.length;
+    } else {
+      // Nothing selected: insert ONLY the marker itself, not an empty
+      // open+close pair — this used to insert "$$" / "****" in one shot
+      // with the cursor meant to land BETWEEN the two halves, but a
+      // mid-string cursor position is exactly what Android's TextInput
+      // does not reliably honor via the controlled `selection` prop (it
+      // was leaving the cursor at the very end instead, past both
+      // markers, so anything typed next landed outside the $...$/**...**
+      // span). Inserting one marker at a time sidesteps that entirely:
+      // the cursor only ever needs to land right after what was just
+      // inserted — an end position, same as every plain symbol button
+      // above, which never had this problem. Tapping the same button
+      // again after typing the content inserts the matching closing
+      // marker the same way (works because open === close for both wrap
+      // buttons actually in use here, $ and **) — the same toggle-on/
+      // toggle-off feel as pressing Ctrl+B twice in a text editor.
+      nextText = before + btn.open + after;
+      nextCursor = start + btn.open.length;
     }
 
     onChangeText(nextText);

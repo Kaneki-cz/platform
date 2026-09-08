@@ -182,6 +182,7 @@ export default function ManageExamQuestionsScreen() {
     <FlatList
       style={styles.container}
       contentContainerStyle={{ padding: 20 }}
+      keyboardShouldPersistTaps="handled"
       data={questions}
       keyExtractor={(q) => q.id}
       ListHeaderComponent={

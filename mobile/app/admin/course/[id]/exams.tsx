@@ -138,6 +138,7 @@ export default function ManageCourseExamsScreen() {
     <FlatList
       style={styles.container}
       contentContainerStyle={{ padding: 20 }}
+      keyboardShouldPersistTaps="handled"
       data={exams}
       keyExtractor={(exam) => exam.id}
       ListHeaderComponent={
