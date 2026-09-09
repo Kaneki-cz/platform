@@ -740,6 +740,18 @@ const SYMBOL_MAP: [RegExp, string][] = [
   [/\\perp/g, '⊥'], [/\\parallel/g, '∥'], [/\\angle/g, '∠'],
   [/\\sim/g, '∼'], [/\\equiv/g, '≡'],
   [/\\therefore/g, '∴'], [/\\because/g, '∵'],
+  // Function names: without these, the generic "\command → strip it"
+  // cleanup at the end of cleanupMathPiece would delete the ENTIRE token
+  // (backslash and letters both), not just the backslash — so
+  // "\cos\theta" silently became "θ" with the word "cos" gone rather than
+  // "cosθ". Hyperbolic variants listed first since they share a prefix
+  // with the plain ones (\sinh before \sin, etc. — same longest-first rule
+  // as the Greek letters above).
+  [/\\sinh/g, 'sinh'], [/\\cosh/g, 'cosh'], [/\\tanh/g, 'tanh'], [/\\coth/g, 'coth'],
+  [/\\sin/g, 'sin'], [/\\cos/g, 'cos'], [/\\tan/g, 'tan'], [/\\cot/g, 'cot'],
+  [/\\sec/g, 'sec'], [/\\csc/g, 'csc'],
+  [/\\log/g, 'log'], [/\\ln/g, 'ln'], [/\\lim/g, 'lim'], [/\\exp/g, 'exp'],
+  [/\\det/g, 'det'], [/\\min/g, 'min'], [/\\max/g, 'max'], [/\\arg/g, 'arg'], [/\\gcd/g, 'gcd'],
   [/\\text\{([^{}]*)\}/g, '$1'], [/\\mathrm\{([^{}]*)\}/g, '$1'], [/\\mathbf\{([^{}]*)\}/g, '$1'],
   [/\\,/g, ' '], [/\\;/g, ' '], [/\\:/g, ' '], [/\\!/g, ''], [/\\quad/g, '  '], [/\\qquad/g, '    '],
   [/\\left/g, ''], [/\\right/g, ''],
