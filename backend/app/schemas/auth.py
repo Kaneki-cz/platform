@@ -14,12 +14,22 @@ class UserLogin(BaseModel):
     password: str
 
 
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class UserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
     full_name: str | None = None
     plan: str
     role: str
+    is_verified: bool
     # None = no admin override, using the plan-based default. See
     # app/models/user.py's effective_ai_daily_limit for the resolved number
     # actually enforced (read directly off the ORM property below) — also

@@ -6,6 +6,10 @@ export interface User {
   full_name: string | null;
   plan: 'free' | 'pro';
   role: UserRole;
+  // False until the sign-up email-verification code is confirmed (see
+  // app/(auth)/verify-email.tsx and backend app/api/routes/auth.py) — always
+  // true for accounts that existed before this feature shipped.
+  is_verified: boolean;
   // Admin-only fields (present on every UserOut the backend returns, but
   // only really relevant on the admin "AI Question Limits" screen).
   // null override => this account just uses its plan's default limit.

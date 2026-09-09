@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -30,6 +30,7 @@ const STRINGS = {
 
 export default function RegisterScreen() {
   const { register } = useAuth();
+  const router = useRouter();
   const { language, toggleLanguage } = useLanguage();
   const t = STRINGS[language];
   const [fullName, setFullName] = useState('');
@@ -42,7 +43,9 @@ export default function RegisterScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      await register(email.trim(), password, fullName.trim() || undefined);
+      const trimmedEmail = email.trim();
+      await register(trimmedEmail, password, fullName.trim() || undefined);
+      router.push({ pathname: '/(auth)/verify-email', params: { email: trimmedEmail } });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.genericError);
     } finally {

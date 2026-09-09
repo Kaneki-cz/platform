@@ -8,7 +8,11 @@ interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  // Does NOT log the student in — see lib/api.ts's register() doc comment.
+  // The caller (RegisterScreen) navigates to the verify-email screen next.
   register: (email: string, password: string, fullName?: string) => Promise<void>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -45,7 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login: async (email, password) => setUser(await api.login(email, password)),
       register: async (email, password, fullName) => {
         await api.register(email, password, fullName);
-        setUser(await api.login(email, password));
+        // No auto-login here anymore — the account isn't verified yet.
+      },
+      verifyEmail: async (email, code) => setUser(await api.verifyEmail(email, code)),
+      resendVerification: async (email) => {
+        await api.resendVerification(email);
       },
       logout: async () => {
         await api.logout();

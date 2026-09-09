@@ -72,6 +72,15 @@ export default function LoginScreen() {
     try {
       await login(email.trim(), password);
     } catch (e) {
+      // 403 here specifically means "right password, account just isn't
+      // verified yet" (see backend app/api/routes/auth.py's /login) — route
+      // straight to the verify-email screen instead of showing a dead-end
+      // error, and have it fetch a fresh code since whatever code was sent
+      // at registration time may well have expired by now.
+      if (e instanceof ApiError && e.status === 403) {
+        router.push({ pathname: '/(auth)/verify-email', params: { email: email.trim(), autoResend: '1' } });
+        return;
+      }
       setError(e instanceof ApiError ? e.message : t.genericError);
     } finally {
       setSubmitting(false);

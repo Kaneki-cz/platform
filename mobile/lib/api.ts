@@ -307,6 +307,10 @@ async function request<T>(
 }
 
 // --- Auth -------------------------------------------------------------
+// Deliberately does NOT log the student in — the returned account has
+// is_verified: false until /verify-email succeeds (see AuthContext.register,
+// which stays logged-out after this and lets the caller — RegisterScreen —
+// navigate to the verify-email screen next).
 export function register(email: string, password: string, fullName?: string) {
   return request<User>('/api/v1/auth/register', {
     method: 'POST',
@@ -326,6 +330,30 @@ export async function login(email: string, password: string): Promise<User> {
   });
   await setToken(access_token);
   return getCurrentUser();
+}
+
+/** Confirms the 6-digit code emailed at sign-up (or resent below) — success
+ * both verifies the account AND logs the student in, same as login() does,
+ * so there's no separate "now go log in" step after this. */
+export async function verifyEmail(email: string, code: string): Promise<User> {
+  const { access_token } = await request<{ access_token: string }>('/api/v1/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+    auth: false,
+  });
+  await setToken(access_token);
+  return getCurrentUser();
+}
+
+/** Requests a fresh code — the backend enforces its own cooldown between
+ * calls (settings.VERIFICATION_RESEND_COOLDOWN_SECONDS) and surfaces it as a
+ * 429 ApiError with a human-readable wait time in the message. */
+export function resendVerification(email: string) {
+  return request<{ message: string }>('/api/v1/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    auth: false,
+  });
 }
 
 export function getCurrentUser() {

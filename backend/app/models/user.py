@@ -35,6 +35,33 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.student, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Email-verification-at-signup (see app/api/routes/auth.py's /register,
+    # /verify-email, /resend-verification and app/services/email_service.py).
+    # server_default="true" is deliberate and NOT a mistake matching
+    # default=False above: it means an ALTER TABLE bringing this column onto
+    # an existing database grandfathers in every account that already
+    # existed before this feature shipped (they never went through a code
+    # step, so they'd otherwise be locked out at their next login), while
+    # every NEW row inserted through the ORM still gets the Python-side
+    # default=False, since SQLAlchemy always sends an explicit value for a
+    # mapped column with a client-side `default` rather than relying on the
+    # server default. See migrate_v12_email_verification.py.
+    is_verified: Mapped[bool] = mapped_column(default=False, server_default="true")
+    # Plaintext 6-digit code (see app.core.security.generate_verification_code)
+    # — short-lived and rate-limited (verification_attempts below), so this
+    # doesn't need hashing the way the password does.
+    verification_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    verification_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the current code was (re)sent — separate from the expiry above so
+    # /resend-verification can enforce its own short cooldown
+    # (settings.VERIFICATION_RESEND_COOLDOWN_SECONDS) independent of the
+    # code's full lifetime (settings.VERIFICATION_CODE_EXPIRE_MINUTES).
+    verification_code_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Wrong-code guesses against the CURRENT code. Reset to 0 whenever a new
+    # code is issued (register or resend). Once this hits
+    # settings.VERIFICATION_MAX_ATTEMPTS, the code is dead and the student
+    # must request a new one — caps brute-forcing a 6-digit code.
+    verification_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # An admin's per-account override of the AI daily-question limit — NULL
     # (the default for everyone) means "use the plan-based default"; a set
     # value replaces it entirely, however high or low, for this one account.

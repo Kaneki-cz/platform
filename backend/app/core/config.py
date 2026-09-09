@@ -77,6 +77,45 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 
+    # Email (SMTP) — sends the sign-up verification code (see
+    # app/services/email_service.py and app/api/routes/auth.py's /register,
+    # /verify-email, /resend-verification). Leave SMTP_USERNAME empty to
+    # disable real sending: the code is only logged to the server console
+    # instead (useful for local dev without a real inbox) — but this MUST be
+    # configured before shipping to real students, or they will never
+    # receive their code and can never finish signing up.
+    #
+    # Quickest setup — a personal Gmail account:
+    #   1. Turn on 2-Step Verification: https://myaccount.google.com/security
+    #   2. Create an App Password: https://myaccount.google.com/apppasswords
+    #      (pick "Mail" as the app) — a 16-character password, NOT your
+    #      normal Gmail password.
+    #   3. SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_USERNAME=that Gmail
+    #      address, SMTP_PASSWORD=the 16-character App Password,
+    #      SMTP_FROM_EMAIL=same Gmail address.
+    # Gmail's free personal-account sending cap is roughly 500 messages/day —
+    # fine for a course's worth of signups. A transactional provider
+    # (SendGrid/Resend/Mailgun) is the better fit once that stops being
+    # enough; they speak the same SMTP protocol, so only these settings
+    # change, not any code.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "منصة الفيزياء"
+
+    # Minutes a verification code stays valid before the student must
+    # request a new one.
+    VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
+    # Seconds that must pass before /resend-verification will send another
+    # code for the same account — a simple per-account throttle so the
+    # resend button can't be used to spam one inbox.
+    VERIFICATION_RESEND_COOLDOWN_SECONDS: int = 60
+    # Wrong-code attempts allowed against one outstanding code before it's
+    # invalidated and a new one must be requested via /resend-verification.
+    VERIFICATION_MAX_ATTEMPTS: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:

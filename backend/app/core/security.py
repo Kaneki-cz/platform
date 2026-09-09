@@ -1,4 +1,5 @@
 """Password hashing and JWT issuance/verification."""
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -8,6 +9,15 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def generate_verification_code() -> str:
+    """A random 6-digit numeric code, zero-padded (e.g. "042917") — used for
+    the sign-up email-verification step (see app/api/routes/auth.py's
+    /register and /resend-verification, and app/services/email_service.py).
+    secrets.randbelow, not random.randint — this gates account creation, so
+    it should be unguessable the same way a password reset token would be."""
+    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 def hash_password(password: str) -> str:
