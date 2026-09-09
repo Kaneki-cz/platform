@@ -29,13 +29,40 @@ class Settings(BaseSettings):
     # Gemini's free tier via its OpenAI-compatible endpoint (no GPU server to
     # host); override in .env to swap providers, since qwen_client.py just
     # speaks the generic OpenAI chat-completions protocol.
+    #
+    # 2026-09-09: moved off "gemini-flash-lite-latest" to the full
+    # "gemini-2.5-flash" — noticeably better at reading messy student photos
+    # (handwriting, diagrams) and general reasoning than Flash-Lite, which is
+    # Gemini's cheapest/weakest tier. Deliberately NOT Gemini 2.5 Pro: on the
+    # free tier, Pro's daily quota (100 requests/day *per project*) is too
+    # tight for our student count, while Flash's (250/day/project) leaves
+    # real headroom across our 3 rotated free projects (~750/day total).
+    # Also using the explicit versioned name instead of a "-latest" alias so
+    # Google can't silently swap the underlying model on us.
     QWEN_API_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     QWEN_API_KEY: str = "change-me"
-    QWEN_MODEL_NAME: str = "gemini-flash-lite-latest"
+    QWEN_MODEL_NAME: str = "gemini-2.5-flash"
 
-    # Usage limits
-    AI_DAILY_REQUEST_LIMIT_FREE: int = 20
-    AI_DAILY_REQUEST_LIMIT_PRO: int = 500
+    # Usage limits — deliberately conservative while we're still on Gemini's
+    # FREE tier (confirmed 2026-09-09: Cloud Billing is disabled on all 3
+    # projects behind QWEN_API_KEY). Free-tier quota is shared across EVERY
+    # student, not per-student: gemini-2.5-flash's free quota is ~250
+    # requests/day per project, and with 3 rotated projects that's a hard
+    # ceiling of ~750 requests/day for the whole app. With ~375 students
+    # across all teachers, the old limits (20/day free, 500/day pro) could
+    # let usage blow past that shared ceiling on a busy day (e.g. before an
+    # exam), after which requests start failing over to the weak local
+    # fallback or erroring out for everyone, not just the heavy user.
+    # These lower numbers buy headroom while still being generous for real
+    # homework use. IMPORTANT: this ceiling is a Google free-tier quota
+    # problem, not a money problem — see qwen_client.py's docstring on the
+    # rotated-keys trick. The actual per-request cost even on a paid model
+    # is a small fraction of a cent, so once Cloud Billing is enabled on the
+    # project, this whole shared-ceiling risk goes away and these can be
+    # raised back up (tie the new numbers to the pricing plan instead, not
+    # to Google's rate limit).
+    AI_DAILY_REQUEST_LIMIT_FREE: int = 8
+    AI_DAILY_REQUEST_LIMIT_PRO: int = 25
 
     # Video storage — any S3-compatible object store, spoken to via boto3 in
     # app/services/b2_storage.py. Originally Backblaze B2 (hence the B2_*
