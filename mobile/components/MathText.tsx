@@ -420,8 +420,10 @@ function readBraceGroup(s: string, openIdx: number): { content: string; end: num
 /** A single symbol, optionally with one exponent/subscript group attached
  * (e.g. "V", "v_0", "T^2") reads fine bare in running text and doesn't need
  * grouping parentheses around it inside a fraction. Anything more complex
- * (an actual sum, a product of several symbols, …) does. */
-function isSimpleToken(s: string): boolean {
+ * (an actual sum, a product of several symbols, …) does. Exported so
+ * MathSymbolInput's own fraction composer can decide parens the exact same
+ * way this file's \frac{}{} expansion does. */
+export function isSimpleToken(s: string): boolean {
   return /^[A-Za-zΑ-Ωα-ω0-9]+(?:[_^](?:\{[^{}]*\}|[A-Za-z0-9]))?$/.test(s.trim());
 }
 

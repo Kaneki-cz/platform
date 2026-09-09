@@ -10,7 +10,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { MathText, toSubUnicode, toSupUnicode } from '@/components/MathText';
+import { MathText, isSimpleToken, toSubUnicode, toSupUnicode } from '@/components/MathText';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 
 /**
@@ -23,9 +23,10 @@ import { colors, fonts, radius, spacing } from '@/constants/theme';
  * bare TextInput.
  *
  * Two rows, deliberately different in character so each reads at a glance:
- *  - Actions row: a handful of square "operation" cards (math mode, bold,
- *    exponent, subscript) — exponent/subscript don't insert anything
- *    directly, they open the popup below instead (see EXPONENT MODAL).
+ *  - Actions row: a handful of square "operation" cards (math mode,
+ *    fraction, exponent, subscript) — none of these insert anything
+ *    directly, they all open a popup below instead (see EXPONENT MODAL and
+ *    the equation/fraction composer comments further down).
  *  - Symbols row: a horizontally-scrolling strip of plain insert chips
  *    (Greek letters, operators, comparisons, arrows), grouped with thin
  *    dividers so it doesn't read as one undifferentiated wall of buttons.
@@ -74,8 +75,6 @@ const SYMBOL_GROUPS: SymbolButton[][] = [
     { label: '→', kind: 'insert', value: '→' },
   ],
 ];
-
-const BOLD_WRAP: SymbolButton = { label: 'B', kind: 'wrap', open: '**', close: '**' };
 
 // Which text field a symbol/exponent insert should land in — the main
 // prompt/choice/explanation field, or (when the equation composer below is
@@ -166,6 +165,19 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   const [eqSelection, setEqSelection] = useState({ start: 0, end: 0 });
   const [eqRange, setEqRange] = useState<{ start: number; end: number } | null>(null);
   const eqInputRef = useRef<TextInput>(null);
+
+  // Fraction popup — same shape as the exponent/subscript popup above (two
+  // plain boxes, live preview, same InsertTarget so it works both from the
+  // main toolbar — a plain "V/R" fraction in running text needs no $...$ at
+  // all — and from inside the equation composer. The inserted text is
+  // always the same plain "num/den" a person would type themselves (with
+  // parens only when a side isn't a single simple symbol, via
+  // isSimpleToken — the exact same rule MathText.tsx's own \frac{}{}
+  // expansion uses), never LaTeX \frac syntax, so it reads correctly
+  // whether or not it ends up inside a $...$ span.
+  const [fracModal, setFracModal] = useState<{ target: InsertTarget } | null>(null);
+  const [fracNum, setFracNum] = useState('');
+  const [fracDen, setFracDen] = useState('');
 
   const applyButton = (btn: SymbolButton) => {
     applyInsert(value, selection, onChangeText, setSelection, btn);
@@ -276,6 +288,59 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     inputRef.current?.focus();
   };
 
+  const convertFraction = (num: string, den: string): string => {
+    const numStr = isSimpleToken(num) ? num : `(${num})`;
+    const denStr = isSimpleToken(den) ? den : `(${den})`;
+    return `${numStr}/${denStr}`;
+  };
+
+  const previewFrac = fracNum.trim() && fracDen.trim() ? convertFraction(fracNum.trim(), fracDen.trim()) : '';
+
+  const openFracModal = (target: InsertTarget = 'main') => {
+    const val = target === 'main' ? value : eqText;
+    const sel = target === 'main' ? selection : eqSelection;
+    const start = Math.min(sel.start, val.length);
+    const end = Math.min(Math.max(sel.end, start), val.length);
+    // Whatever's already selected becomes the starting numerator — the
+    // common case is selecting "V" then reaching for Fraction to divide it
+    // by something.
+    setFracNum(val.slice(start, end));
+    setFracDen('');
+    setFracModal({ target });
+  };
+
+  const closeFracModal = () => {
+    setFracModal(null);
+    setFracNum('');
+    setFracDen('');
+  };
+
+  const confirmFracModal = () => {
+    if (!fracModal || !previewFrac) {
+      closeFracModal();
+      return;
+    }
+    const target = fracModal.target;
+    const val = target === 'main' ? value : eqText;
+    const sel = target === 'main' ? selection : eqSelection;
+    const start = Math.min(sel.start, val.length);
+    const end = Math.min(Math.max(sel.end, start), val.length);
+    const before = val.slice(0, start);
+    const after = val.slice(end);
+    const nextText = before + previewFrac + after;
+    const nextCursor = before.length + previewFrac.length;
+    if (target === 'main') {
+      onChangeText(nextText);
+      setSelection({ start: nextCursor, end: nextCursor });
+      inputRef.current?.focus();
+    } else {
+      setEqText(nextText);
+      setEqSelection({ start: nextCursor, end: nextCursor });
+      eqInputRef.current?.focus();
+    }
+    closeFracModal();
+  };
+
   return (
     <View>
       {/* Actions: the four things that change how a whole chunk of text is
@@ -286,9 +351,9 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
           <Text style={styles.actionButtonGlyph}>$…$</Text>
           <Text style={styles.actionButtonLabel}>رياضيات</Text>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => applyButton(BOLD_WRAP)}>
-          <Text style={[styles.actionButtonGlyph, { fontFamily: fonts.bold }]}>B</Text>
-          <Text style={styles.actionButtonLabel}>غامق</Text>
+        <Pressable style={styles.actionButton} onPress={() => openFracModal('main')}>
+          <Text style={styles.actionButtonGlyph}>a⁄b</Text>
+          <Text style={styles.actionButtonLabel}>كسر</Text>
         </Pressable>
         <Pressable style={styles.actionButton} onPress={() => openExpModal('sup')}>
           <Text style={styles.actionButtonGlyph}>aⁿ</Text>
@@ -378,6 +443,9 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
               keyboardShouldPersistTaps="always"
             >
               <View style={styles.group}>
+                <Pressable style={styles.symbolButton} onPress={() => openFracModal('eq')}>
+                  <Text style={styles.symbolButtonText}>a⁄b</Text>
+                </Pressable>
                 <Pressable style={styles.symbolButton} onPress={() => openExpModal('sup', 'eq')}>
                   <Text style={styles.symbolButtonText}>aⁿ</Text>
                 </Pressable>
@@ -416,6 +484,65 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                 style={[styles.modalConfirmButton, !eqText.trim() && styles.modalConfirmButtonDisabled]}
                 onPress={confirmEqModal}
                 disabled={!eqText.trim()}
+              >
+                <Text style={styles.modalConfirmText}>إدراج</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Fraction popup — see the comment on fracModal above. */}
+      <Modal visible={!!fracModal} transparent animationType="fade" onRequestClose={closeFracModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>إدراج كسر</Text>
+            <Text style={styles.modalHint}>
+              اكتب البسط في الخانة الأولى، والمقام في التانية — هيتحطوا في مكان المؤشر الحالي كـ"بسط/مقام"، تقدر
+              تستخدمها جوه معادلة أو في نص عادي.
+            </Text>
+
+            <View style={styles.modalFieldsRow}>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>البسط</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={fracNum}
+                  onChangeText={setFracNum}
+                  placeholder="V"
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!fracNum}
+                />
+              </View>
+              <Text style={styles.modalOperator}>/</Text>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>المقام</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={fracDen}
+                  onChangeText={setFracDen}
+                  placeholder="R"
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!!fracNum}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalPreviewWrap}>
+              <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
+              <Text style={styles.modalPreviewText} numberOfLines={1}>
+                {previewFrac || '—'}
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={closeFracModal}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmButton, !previewFrac && styles.modalConfirmButtonDisabled]}
+                onPress={confirmFracModal}
+                disabled={!previewFrac}
               >
                 <Text style={styles.modalConfirmText}>إدراج</Text>
               </Pressable>
