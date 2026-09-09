@@ -72,25 +72,41 @@ const LATIN_RE = /[A-Za-z0-9]/;
  * deliberate result rather than blending into the surrounding prose.
  *
  * UPDATE: fractions now always render as a real stacked bar (numerator,
- * horizontal line, denominator), not just the old plain-text "a/b" degrade
- * — this was a deliberate choice after weighing the RTL-wrapping bug
- * above, made explicitly at the user's request after being warned about
- * that history. The trick that keeps it safe: a bare "\frac{a}{b}$" (the
- * *entire* content of its own $...$ span — see matchBareFraction) is never
- * inlined into the middle of a wrapping line at all. Instead, buildBlocks()
- * below splits the whole input into a top-to-bottom stack of blocks: each
- * run of ordinary prose/math (everything BETWEEN fraction spans) still
- * renders as one single native <Text> tree exactly as before — full native
- * bidi, zero risk — and each bare fraction gets its own StackedFraction
- * block sitting between them. Blocks simply stack vertically in source
- * order, which needs no bidi awareness at all (unlike the old flex-wrap
- * row, a plain top-to-bottom stack is direction-agnostic, so it can't
- * reorder anything relative to anything else). The one place this still
- * can't help: a fraction combined with other content INSIDE the same
- * $...$ span (e.g. "$I = \frac{V}{R}$", or a fraction that's part of a
- * bigger expression) isn't "bare" on its own, so it still safely degrades
- * to inline "V/R" text via expandFracAndSqrt — only a fraction that is the
- * whole of its own $...$ span gets the real bar.
+ * horizontal line, denominator), not just the old plain-text "a/b" degrade,
+ * AND it sits truly inline in the same running line as any surrounding
+ * text — not on a line of its own. Both of these were deliberate choices
+ * made explicitly at the user's request, made a SECOND time after
+ * specifically being shown (via a screenshot) the safer alternative this
+ * file used to fall back to — a fraction stacked on its own separate line
+ * below the text next to it, which avoided the bug below entirely — and
+ * choosing true inline placement anyway.
+ *
+ * That means this file is now knowingly using the exact mechanism that
+ * previously broke Arabic paragraph order: a bare "\frac{a}{b}$" (the
+ * *entire* content of its own $...$ span — see matchBareFraction) breaks
+ * a prose block into word-level flow items (buildBlocks + renderFlow)
+ * arranged in a flex-wrap row (flexDirection row-reverse for RTL content,
+ * flexWrap: 'wrap') alongside a StackedFraction item — the same row-
+ * reverse + flex-wrap combination whose confirmed failure mode is: once
+ * such a row wraps onto more than one line, whole chunks of it can come
+ * out in the wrong order relative to each other. It is NOT reliably safe.
+ * If Arabic text next to an inline fraction reads with words/phrases out
+ * of order — especially once the line is long enough to wrap — that is
+ * this exact bug recurring, not a new one. The two safer designs this
+ * file used before (in order of increasing safety) were: (a) same real
+ * bar, but on its own line, separate from surrounding text (renderFlow
+ * replaced by a plain top-to-bottom View stack — direction-agnostic, zero
+ * risk); (b) every fraction as plain inline text ("V/R") via
+ * expandFracAndSqrt, flowing through one single native <Text> tree same as
+ * everything else (the original, fully-safe design). Reverting to either
+ * is a same-file change, not a redesign, if this recurs and can't be fixed.
+ *
+ * The one case this still can't help regardless: a fraction combined with
+ * other content INSIDE the same $...$ span (e.g. "$I = \frac{V}{R}$", or a
+ * fraction that's part of a bigger expression) isn't "bare" on its own, so
+ * it still safely degrades to inline "V/R" text via expandFracAndSqrt —
+ * only a fraction that is the whole of its own $...$ span gets the real
+ * bar at all.
  */
 export function MathText({
   text,
@@ -130,21 +146,110 @@ export function MathText({
     return <StackedFraction num={blocks[0].num} den={blocks[0].den} color={color} fontSize={fontSize} style={style} />;
   }
 
-  // Mixed content (prose and one or more bare fractions together): stack
-  // each block top-to-bottom — see the file-level doc comment above for
-  // why this sidesteps the RTL flex-wrap bug entirely rather than risking
-  // it again.
+  // Mixed content (prose and one or more bare fractions together): flow
+  // everything — words and fractions alike — in one wrapping row so the
+  // fraction sits truly inline with the text around it. See the file-level
+  // doc comment above: this is the knowingly-risky path, kept only because
+  // it was explicitly requested twice after being warned.
+  return renderFlow(blocks, { color, fontSize, bold, numberOfLines, style });
+}
+
+/** Flows prose words and StackedFraction widgets together in one wrapping
+ * flex row, so a bare fraction sits inline with the text on either side of
+ * it instead of on its own line. See the big warning in MathText's own doc
+ * comment: this reuses the same row-reverse + flex-wrap mechanism already
+ * confirmed to scramble word order once a row wraps onto more than one
+ * line — it is not a new, safer technique, just the one the user chose
+ * anyway after seeing the safer alternative. */
+function renderFlow(
+  blocks: ContentBlock[],
+  opts: { color: string; fontSize: number; bold: boolean; numberOfLines?: number; style?: TextStyle },
+) {
+  const concatenated = blocks
+    .map((b) => (b.type === 'prose' ? nodesToPlainString(b.nodes) : `${b.num}/${b.den}`))
+    .join(' ');
+  const rtl = isRtlText(concatenated);
+
+  const items: React.ReactNode[] = [];
+  let key = 0;
+  for (const block of blocks) {
+    if (block.type === 'fracBlock') {
+      items.push(
+        <StackedFraction key={`f${key++}`} num={block.num} den={block.den} color={opts.color} fontSize={opts.fontSize} />,
+      );
+      continue;
+    }
+    for (const node of block.nodes) {
+      if (node.type === 'break') {
+        // Forces a line break in the wrapping row — a 100%-width, zero-
+        // height item pushes everything after it to the next line, the
+        // standard trick for a hard break inside a flex-wrap row.
+        items.push(<View key={`b${key++}`} style={{ width: '100%', height: 0 }} />);
+        if (node.paragraph) items.push(<View key={`b${key++}`} style={{ width: '100%', height: opts.fontSize * 0.6 }} />);
+        continue;
+      }
+      if (node.type === 'text') {
+        const bold = node.bold || opts.bold;
+        splitWords(node.value).forEach((word) => {
+          items.push(
+            <Text key={`t${key++}`} style={{ color: opts.color }}>
+              {splitLatinRuns(word).map((r, j) => (
+                <Text
+                  key={j}
+                  style={{ fontFamily: r.latin ? (bold ? fonts.serifBold : fonts.serif) : bold ? fonts.bold : fonts.regular }}
+                >
+                  {r.text}
+                </Text>
+              ))}
+            </Text>,
+          );
+        });
+        continue;
+      }
+      // Math node (not a bare fraction — those already became their own
+      // fracBlock in buildBlocks) — kept as one atomic flow item; a real
+      // formula isn't meant to wrap mid-expression anyway.
+      const isBlank = !node.pieces.some((p) => p.text.trim());
+      items.push(
+        <Text key={`m${key++}`} style={isBlank ? { color: opts.color } : { color: colors.accent, fontFamily: MATH_FONT }}>
+          {LRI}
+          {renderPieces(node.pieces)}
+          {PDI}
+        </Text>,
+      );
+    }
+  }
+
   return (
-    <View style={style as any}>
-      {blocks.map((block, i) =>
-        block.type === 'fracBlock' ? (
-          <StackedFraction key={i} num={block.num} den={block.den} color={color} fontSize={fontSize} />
-        ) : (
-          renderProseBlock(block.nodes, { color, fontSize, bold, numberOfLines, blockKey: i })
-        ),
-      )}
+    <View
+      style={[
+        {
+          flexDirection: rtl ? 'row-reverse' : 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        },
+        opts.style as any,
+      ]}
+    >
+      {items}
     </View>
   );
+}
+
+/** Splits plain text into word-level flow items, each carrying its own
+ * leading space (except the first) so a wrapping flex row breaks at word
+ * boundaries the same way native text wrapping would. */
+function splitWords(s: string): string[] {
+  const parts = s.split(' ');
+  return parts.map((w, i) => (i === 0 ? w : ` ${w}`)).filter((w) => w !== '');
+}
+
+/** Flattens a prose block's nodes back into one plain string — used only
+ * to run the same RTL-direction heuristic (isRtlText) over the whole flow,
+ * since renderFlow needs one shared direction for its row, not a per-block
+ * one. */
+function nodesToPlainString(nodes: InlineNode[]): string {
+  return nodes.map((n) => (n.type === 'text' ? n.value : n.type === 'math' ? n.pieces.map((p) => p.text).join('') : ' ')).join('');
 }
 
 /** Renders one prose block — plain/bold text and any non-bare math spans —
