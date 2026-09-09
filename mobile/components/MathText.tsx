@@ -244,7 +244,7 @@ function renderFlow(
           }
         >
           {LRI}
-          {renderPieces(node.pieces)}
+          {renderPieces(node.pieces, opts.fontSize + MATH_SIZE_BUMP)}
           {PDI}
         </Text>,
       );
@@ -351,7 +351,7 @@ function StackedFraction({
   const lineStyle = { color: barColor, fontFamily: MATH_FONT, fontSize: barFontSize, textAlign: 'center' as const };
   return (
     <View style={[{ alignItems: 'center', alignSelf: 'flex-start' }, style as any]}>
-      <Text style={lineStyle}>{renderPieces(parseMathExpr(num))}</Text>
+      <Text style={lineStyle}>{renderPieces(parseMathExpr(num), barFontSize)}</Text>
       <View
         style={{
           alignSelf: 'stretch',
@@ -360,7 +360,7 @@ function StackedFraction({
           marginVertical: Math.round(barFontSize * 0.12),
         }}
       />
-      <Text style={lineStyle}>{renderPieces(parseMathExpr(den))}</Text>
+      <Text style={lineStyle}>{renderPieces(parseMathExpr(den), barFontSize)}</Text>
     </View>
   );
 }
@@ -385,13 +385,11 @@ function renderNode(node: InlineNode, idx: number, color: string, fontSize: numb
     );
   }
   const isBlank = !node.pieces.some((p) => p.text.trim());
+  const mathFontSize = fontSize + MATH_SIZE_BUMP;
   return (
-    <Text
-      key={idx}
-      style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT, fontSize: fontSize + MATH_SIZE_BUMP }}
-    >
+    <Text key={idx} style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT, fontSize: mathFontSize }}>
       {LRI}
-      {renderPieces(node.pieces)}
+      {renderPieces(node.pieces, mathFontSize)}
       {PDI}
     </Text>
   );
@@ -466,13 +464,22 @@ function splitItalicRuns(s: string): { text: string; italic: boolean }[] {
  * noticeably less bold than the upright text around it. Switching to the
  * font's own hand-designed bold italic glyphs fixes both at once — the
  * upright branch (non-italic) still just inherits fontFamily from whatever
- * ancestor Text set it (MATH_FONT), same as before. */
-function renderPieces(pieces: MathPiece[]) {
+ * ancestor Text set it (MATH_FONT), same as before.
+ *
+ * `fontSize` is the surrounding math run's own (already-bumped) size — only
+ * used to compute a SMALLER size for a `small`-flagged piece (see
+ * MathPiece's own comment); every other piece just inherits the ancestor
+ * Text's size, same as before this parameter existed. */
+function renderPieces(pieces: MathPiece[], fontSize: number) {
   const nodes: React.ReactNode[] = [];
   pieces.forEach((p, i) => {
+    const smallSize = p.small ? Math.round(fontSize * 0.72) : undefined;
     splitItalicRuns(p.text).forEach((r, j) => {
+      const style: TextStyle = {};
+      if (r.italic) style.fontFamily = fonts.serifBoldItalic;
+      if (smallSize) style.fontSize = smallSize;
       nodes.push(
-        <Text key={`${i}-${j}`} style={r.italic ? { fontFamily: fonts.serifBoldItalic } : undefined}>
+        <Text key={`${i}-${j}`} style={Object.keys(style).length ? style : undefined}>
           {r.text}
         </Text>,
       );
@@ -514,7 +521,18 @@ const PDI = '⁩';
 // ---------------------------------------------------------------------------
 // Building the top-to-bottom block list (prose blocks, bare-fraction blocks)
 // ---------------------------------------------------------------------------
-type MathPiece = { text: string };
+// `small` marks a piece that's a parenthetical sub/superscript fallback
+// (see parseMathExpr) — Unicode simply has no dedicated subscript glyph for
+// b/c/d/f/g/q/w/y/z (and no superscript glyph for q), so that fallback
+// wraps the raw letter in subscript/superscript-*height* parentheses
+// (₍w₎/⁽q⁾) but the letter itself inside them is plain, full-size text —
+// next to the tiny parens that looked mismatched, oversized and not
+// remotely "lowered". renderPieces shrinks a `small` piece's whole run
+// (parens and letter alike) to read as one consistent, clearly-subordinate
+// unit instead — the best available fix given a real position-offset shift
+// is confirmed not to render on this app's Android build (see MathText's
+// own file-level doc comment).
+type MathPiece = { text: string; small?: boolean };
 type InlineNode =
   | { type: 'text'; value: string; bold?: boolean }
   | { type: 'math'; pieces: MathPiece[] }
@@ -844,14 +862,14 @@ function parseMathExpr(expr: string): MathPiece[] {
       const cleaned = cleanupMathPiece(raised);
       if (cleaned) {
         const uni = toSupUnicode(cleaned);
-        pieces.push({ text: uni !== null ? uni : `⁽${cleaned}⁾` });
+        pieces.push(uni !== null ? { text: uni } : { text: `⁽${cleaned}⁾`, small: true });
       }
     } else {
       const lowered = subBrace ?? subChar ?? '';
       const cleaned = cleanupMathPiece(lowered);
       if (cleaned) {
         const uni = toSubUnicode(cleaned);
-        pieces.push({ text: uni !== null ? uni : `₍${cleaned}₎` });
+        pieces.push(uni !== null ? { text: uni } : { text: `₍${cleaned}₎`, small: true });
       }
     }
     lastIndex = regex.lastIndex;
