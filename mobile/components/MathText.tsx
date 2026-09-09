@@ -6,19 +6,19 @@ import { colors, fonts } from '@/constants/theme';
 // A real textbook renders math in a serif face with variables/Greek
 // letters in italic and numbers/operators upright — that convention alone
 // is a big part of what makes typeset math read as "real" rather than
-// plain sans-serif prose with some characters colored in. Tinos (see
-// constants/theme.ts's fonts.serifBold) is what actually gets loaded here —
-// a real font file bundled by the app, so it's identical on iOS and
-// Android, unlike relying on a platform system font name.
+// plain sans-serif prose with some characters colored in. STIX Two Text
+// (see constants/theme.ts's fonts.serifBold) is what actually gets loaded
+// here — a real font file bundled by the app (so it's identical on iOS and
+// Android), and one purpose-built for scientific/math typesetting.
 const MATH_FONT = fonts.serifBold;
 const LETTER_RE = /[A-Za-zΑ-Ωα-ω]/;
 // Any run of plain Latin letters/digits — a unit, a brand/proper name, a
 // number, an English word sitting inside an otherwise-Arabic sentence — so
-// it renders in fonts.serif/serifBold (Tinos) instead of the app's default
-// Cairo, same as the user asked: "any English text, whether letters or
-// numbers, in Times New Roman". Deliberately narrower than LETTER_RE above
-// (no Greek here) — Greek symbols only ever show up inside $...$ math
-// spans, which already get the serif treatment as a whole piece.
+// it renders in fonts.serif/serifBold (STIX Two Text) instead of the app's
+// default Cairo, same as the user asked: "any English text, whether
+// letters or numbers, in Times New Roman". Deliberately narrower than
+// LETTER_RE above (no Greek here) — Greek symbols only ever show up inside
+// $...$ math spans, which already get the serif treatment as a whole piece.
 const LATIN_RE = /[A-Za-z0-9]/;
 
 /**
@@ -149,7 +149,7 @@ function renderNode(node: InlineNode, idx: number, color: string, defaultBold = 
 /** Splits a plain-prose run into alternating Latin-letter/digit and
  * everything-else (Arabic, punctuation, spaces, …) sub-runs, so an English
  * word or number sitting inside an Arabic sentence — "استخدم Newton
- * الثاني" — renders in fonts.serif/serifBold (Tinos) while the surrounding
+ * الثاني" — renders in fonts.serif/serifBold (STIX Two Text) while the surrounding
  * Arabic stays in Cairo. Same idea as splitItalicRuns below, just deciding
  * a font family instead of an italic flag, and only for plain text nodes —
  * a math span already renders as one uniform serif piece regardless. */

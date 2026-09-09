@@ -77,15 +77,19 @@ export const fonts = {
   bold: 'Cairo_700Bold',
   // Any run of English letters/digits (a formula, a unit, a plain English
   // word sitting inside an Arabic sentence) renders in this instead of
-  // Cairo — see MathText.tsx's splitLatinRuns. Tinos (Google Fonts) rather
-  // than the literal "Times New Roman" font file: it's metrically
-  // compatible with Times New Roman (same look, same widths) but is a free
-  // font Expo can actually bundle and load identically on iOS *and*
-  // Android — "Times New Roman" itself is a real, loadable font name on iOS
-  // but isn't a system font Android ships at all, so pinning to that exact
-  // name would silently fall back to Roboto on Android only.
-  serif: 'Tinos_400Regular',
-  serifBold: 'Tinos_700Bold',
+  // Cairo — see MathText.tsx's splitLatinRuns. STIX Two Text (Google
+  // Fonts) rather than the literal "Times New Roman" font file: it's a
+  // real font file Expo can bundle and load identically on iOS *and*
+  // Android (a literal "Times New Roman" name is only a real system font
+  // on iOS — Android has no bundled equivalent and would silently fall
+  // back to Roboto). STIX Two Text specifically was chosen over the
+  // previous Tinos pick after the user asked for a clearer serif — it's
+  // the serif face the STIX project designed for scientific/math
+  // typesetting, so its capital "I" reads with unambiguous top/bottom
+  // serif bars and its digits/variables read cleanly at small sizes,
+  // which matters a lot for a physics app.
+  serif: 'STIXTwoText_400Regular',
+  serifBold: 'STIXTwoText_700Bold',
 } as const;
 
 export const radius = {
