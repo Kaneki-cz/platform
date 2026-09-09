@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ImageCropModal } from '@/components/ImageCropPicker';
-import { MathSymbolInput } from '@/components/MathSymbolInput';
+import { MathSymbolInput, useSharedMathToolbar } from '@/components/MathSymbolInput';
 import { MathText } from '@/components/MathText';
 import { ResolvedImage } from '@/components/ResolvedImage';
 import {
@@ -52,6 +52,12 @@ export default function ManageExamQuestionsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [cropTarget, setCropTarget] = useState<CropTarget>(null);
+
+  // One toolbar (math/fraction/exponent/subscript, undo, quick symbols)
+  // shared by all 4 choice fields below instead of each repeating its own —
+  // see useSharedMathToolbar's own comment for how "the active field" works.
+  const { toolbar: choiceToolbar, modals: choiceModals, getFieldProps: getChoiceFieldProps, activeKey: activeChoiceKey } =
+    useSharedMathToolbar(choiceTexts, (key, v) => setChoiceTexts((prev) => ({ ...prev, [key]: v })));
 
   const load = useCallback(() => {
     if (!id) return;
@@ -176,6 +182,29 @@ export default function ManageExamQuestionsScreen() {
     ]);
   };
 
+  // Clones a question in place (same exam, right after the original in the
+  // list) so a near-identical follow-up ("same choices, one number changed")
+  // starts from a full copy instead of retyping everything. No confirmation
+  // dialog — unlike delete, this is fully reversible with a single tap of
+  // the delete button on the new copy.
+  const onDuplicate = async (q: QuestionAdmin) => {
+    if (!id) return;
+    try {
+      await createQuestion({
+        exam_id: id,
+        prompt: q.prompt,
+        question_type: q.question_type,
+        choices: q.choices,
+        correct_answer: q.correct_answer,
+        explanation: q.explanation ?? undefined,
+        image_url: q.image_url,
+      });
+      load();
+    } catch (e) {
+      Alert.alert('Could not duplicate', e instanceof ApiError ? e.message : 'Something went wrong.');
+    }
+  };
+
   if (!exam) return null;
 
   return (
@@ -218,9 +247,18 @@ export default function ManageExamQuestionsScreen() {
                 {item.question_type === 'multiple_choice' ? 'Multiple choice' : 'Text answer'}
               </Text>
             </View>
-            <Pressable style={styles.deleteIconButton} onPress={() => onDelete(item.id)} hitSlop={8}>
-              <Text style={styles.deleteIconText}>🗑</Text>
-            </Pressable>
+            <View style={styles.cardActions}>
+              <Pressable
+                style={[styles.deleteIconButton, styles.duplicateIconButton]}
+                onPress={() => onDuplicate(item)}
+                hitSlop={8}
+              >
+                <Text style={styles.duplicateIconText}>⧉</Text>
+              </Pressable>
+              <Pressable style={styles.deleteIconButton} onPress={() => onDelete(item.id)} hitSlop={8}>
+                <Text style={styles.deleteIconText}>🗑</Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       )}
@@ -272,6 +310,7 @@ export default function ManageExamQuestionsScreen() {
           {questionType === 'multiple_choice' ? (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>☑️ Choices — tap the correct letter</Text>
+              {choiceToolbar}
               {CHOICE_KEYS.map((key) => (
                 <View key={key} style={styles.choiceInputRow}>
                   <Pressable
@@ -283,13 +322,20 @@ export default function ManageExamQuestionsScreen() {
                     </Text>
                   </Pressable>
                   <View style={styles.choiceInput}>
-                    <MathSymbolInput
-                      style={styles.input}
+                    <TextInput
+                      {...getChoiceFieldProps(key)}
+                      style={[styles.input, activeChoiceKey === key && styles.choiceInputFocused]}
                       placeholder={`Choice ${key}`}
                       placeholderTextColor={colors.textFaint}
-                      value={choiceTexts[key]}
-                      onChangeText={(v) => setChoiceTexts((prev) => ({ ...prev, [key]: v }))}
                     />
+                    {choiceTexts[key].trim() ? (
+                      <MathText
+                        text={choiceTexts[key]}
+                        color={colors.textMuted}
+                        fontSize={12}
+                        style={styles.choicePreview}
+                      />
+                    ) : null}
                   </View>
                   {correctChoice === key ? <Text style={styles.correctTag}>✓ correct</Text> : null}
                 </View>
@@ -381,6 +427,7 @@ export default function ManageExamQuestionsScreen() {
       onCancel={() => setCropTarget(null)}
       onDone={onCropDone}
     />
+    {choiceModals}
     </>
   );
 }
@@ -436,6 +483,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     overflow: 'hidden',
   },
+  cardActions: { flexDirection: 'row', gap: 6 },
   deleteIconButton: {
     width: 30,
     height: 30,
@@ -445,6 +493,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deleteIconText: { fontSize: 13 },
+  duplicateIconButton: { backgroundColor: colors.primary + '20' },
+  duplicateIconText: { fontSize: 13, color: colors.primary },
   empty: { color: colors.textFaint, marginVertical: 20, fontFamily: fonts.regular },
 
   formCard: {
@@ -527,6 +577,8 @@ const styles = StyleSheet.create({
   choiceKeyText: { color: colors.textMuted, fontFamily: fonts.bold },
   choiceKeyTextActive: { color: colors.success },
   choiceInput: { flex: 1 },
+  choiceInputFocused: { borderColor: colors.primary },
+  choicePreview: { marginTop: -6, marginBottom: 10 },
   correctTag: {
     color: colors.success,
     fontSize: 9.5,

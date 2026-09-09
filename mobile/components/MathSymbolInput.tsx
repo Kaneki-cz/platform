@@ -1,4 +1,6 @@
-import React, { useRef, useState } from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -12,6 +14,15 @@ import {
 
 import { MathText, toSubUnicode, toSupUnicode } from '@/components/MathText';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
+
+// Persists which plain symbols (Greek letters, operators, …) get tapped
+// most, so the "الأكتر استخدامًا" quick row can surface them without
+// digging through the full scrollable strip every time. Piggybacks on
+// expo-secure-store (already a project dependency for auth) rather than
+// pulling in AsyncStorage as a new one just for this — the value here
+// isn't sensitive, secure-store is just a convenient already-installed
+// small key/value store.
+const SYMBOL_USAGE_KEY = 'math_symbol_usage_v1';
 
 /**
  * A TextInput with a two-tier toolbar above it for math/Latin symbols that
@@ -76,6 +87,10 @@ const SYMBOL_GROUPS: SymbolButton[][] = [
   ],
 ];
 
+// Flat lookup used to turn a stored usage count (keyed by the symbol's own
+// value string) back into the SymbolButton it came from, for the quick row.
+const ALL_SYMBOLS: SymbolButton[] = SYMBOL_GROUPS.flat();
+
 // Which text field a symbol/exponent insert should land in — the main
 // prompt/choice/explanation field, the equation composer's own field, or
 // (new) whichever of the Fraction popup's own numerator/denominator boxes
@@ -135,6 +150,19 @@ function applyInsert(
   setSelection({ start: nextCursor, end: nextCursor });
 }
 
+/** Turns a raised group's raw text into real Unicode super/subscript glyphs
+ * (falling back to a parenthetical at the same visual level for a
+ * character with no such glyph, e.g. b/c/d/f/g/q/w/y/z) — shared by
+ * MathSymbolInput's own exponent modal and useSharedMathToolbar's copy of
+ * it below, so a raised group looks identical no matter which toolbar
+ * inserted it. */
+function convertRaised(mode: 'sup' | 'sub', raw: string): string {
+  if (!raw) return '';
+  const uni = mode === 'sup' ? toSupUnicode(raw) : toSubUnicode(raw);
+  if (uni !== null) return uni;
+  return mode === 'sup' ? `⁽${raw}⁾` : `₍${raw}₎`;
+}
+
 interface MathSymbolInputProps extends Omit<TextInputProps, 'onChangeText' | 'value'> {
   value: string;
   onChangeText: (text: string) => void;
@@ -143,6 +171,63 @@ interface MathSymbolInputProps extends Omit<TextInputProps, 'onChangeText' | 'va
 export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSymbolInputProps) {
   const [selection, setSelection] = useState({ start: value.length, end: value.length });
   const inputRef = useRef<TextInput>(null);
+
+  // Tracks the main field's own focus so its border can light up while
+  // it's the one being typed into — composed with whatever onFocus/onBlur
+  // the caller passes via `rest`, rather than overriding them.
+  const [mainFocused, setMainFocused] = useState(false);
+
+  // Per-symbol tap counts, loaded once from expo-secure-store and re-saved
+  // on every tap — see SYMBOL_USAGE_KEY above. quickSymbols (used in the
+  // render below) is just the top 4 by count.
+  const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    SecureStore.getItemAsync(SYMBOL_USAGE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          setUsageCounts(JSON.parse(raw));
+        } catch {
+          // Corrupted/old-format value — ignore and start fresh rather
+          // than crash the whole input over a cosmetic feature.
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const recordSymbolUsage = (btn: SymbolButton) => {
+    if (btn.kind !== 'insert') return;
+    setUsageCounts((prev) => {
+      const next = { ...prev, [btn.value]: (prev[btn.value] ?? 0) + 1 };
+      SecureStore.setItemAsync(SYMBOL_USAGE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+  const quickSymbols: SymbolButton[] = Object.entries(usageCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([v]) => ALL_SYMBOLS.find((s) => s.kind === 'insert' && s.value === v))
+    .filter((s): s is SymbolButton => !!s);
+
+  // Undo — a small stack of the main field's own past values, snapshotted
+  // right before each button/modal-driven insertion (NOT on every
+  // keystroke — plain typing already has the OS keyboard's own undo).
+  // historyRef holds the actual stack (a ref so pushing doesn't itself
+  // trigger a re-render); histCount is just a render-visible mirror of its
+  // length, to show/hide the Undo row.
+  const historyRef = useRef<string[]>([]);
+  const [histCount, setHistCount] = useState(0);
+  const pushHistory = () => {
+    historyRef.current = [...historyRef.current.slice(-9), value];
+    setHistCount(historyRef.current.length);
+  };
+  const undo = () => {
+    const prev = historyRef.current.pop();
+    setHistCount(historyRef.current.length);
+    if (prev === undefined) return;
+    onChangeText(prev);
+    setSelection({ start: prev.length, end: prev.length });
+    inputRef.current?.focus();
+  };
 
   // Exponent/subscript popup state — null when closed. `base`/`raised` are
   // the two boxes' own live text; converted to real Unicode only at the
@@ -198,6 +283,8 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   const [fracFocusedField, setFracFocusedField] = useState<'num' | 'den'>('num');
 
   const applyButton = (btn: SymbolButton) => {
+    pushHistory();
+    recordSymbolUsage(btn);
     applyInsert(value, selection, onChangeText, setSelection, btn);
     // A button tap can blur the field on Android — pull focus back so the
     // next keystroke lands right where it should, cursor already moved.
@@ -205,6 +292,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   };
 
   const applyEqButton = (btn: SymbolButton) => {
+    recordSymbolUsage(btn);
     applyInsert(eqText, eqSelection, setEqText, setEqSelection, btn);
     eqInputRef.current?.focus();
   };
@@ -236,17 +324,6 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     setModalRaised('');
   };
 
-  const convertRaised = (mode: 'sup' | 'sub', raw: string): string => {
-    if (!raw) return '';
-    const uni = mode === 'sup' ? toSupUnicode(raw) : toSubUnicode(raw);
-    if (uni !== null) return uni;
-    // Same fallback MathText.tsx's own parser uses for a raised group
-    // containing a letter with no Unicode sub/superscript glyph (b, c, d,
-    // f, g, q, w, y, z) — a parenthetical at the same visual "level" via
-    // the sub/superscript-style parens, rather than silently dropping it.
-    return mode === 'sup' ? `⁽${raw}⁾` : `₍${raw}₎`;
-  };
-
   const confirmExpModal = () => {
     if (!expModal) return;
     const target = expModal.target;
@@ -269,6 +346,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     const nextText = before + inserted + after;
     const nextCursor = before.length + inserted.length;
     if (target === 'main') {
+      pushHistory();
       onChangeText(nextText);
       setSelection({ start: nextCursor, end: nextCursor });
       inputRef.current?.focus();
@@ -314,6 +392,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     const inserted = `$${trimmed}$`;
     const nextText = before + inserted + after;
     const nextCursor = before.length + inserted.length;
+    pushHistory();
     onChangeText(nextText);
     setSelection({ start: nextCursor, end: nextCursor });
     closeEqModal();
@@ -365,6 +444,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     const nextText = before + inserted + after;
     const nextCursor = before.length + inserted.length;
     if (target === 'main') {
+      pushHistory();
       onChangeText(nextText);
       setSelection({ start: nextCursor, end: nextCursor });
       inputRef.current?.focus();
@@ -378,27 +458,79 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
 
   return (
     <View>
+      {/* Undo — only shown once there's actually something to undo, so it
+          doesn't sit there as dead chrome on a fresh field. Reverts the
+          last button/modal-driven insertion (see pushHistory above), not
+          individual keystrokes — plain typing keeps the OS keyboard's own
+          undo. */}
+      {histCount > 0 ? (
+        <Pressable style={({ pressed }) => [styles.undoRow, pressed && styles.pressedScale]} onPress={undo} hitSlop={6}>
+          <Text style={styles.undoArrow}>↺</Text>
+          <Text style={styles.undoText}>تراجع</Text>
+        </Pressable>
+      ) : null}
+
       {/* Actions: the four things that change how a whole chunk of text is
-          treated, not a single inserted character — visually set apart from
-          the plain symbol chips below with a tinted, bordered card each. */}
+          treated, not a single inserted character — each gets its own
+          accent color (from the app's existing palette) so they're
+          distinguishable at a glance instead of four identical tinted
+          squares, and the fraction/exponent/subscript glyphs are now a
+          miniature real preview / proper icon rather than a plain text
+          approximation. */}
       <View style={styles.actionsRow}>
-        <Pressable style={styles.actionButton} onPress={openEqModal}>
-          <Text style={styles.actionButtonGlyph}>$…$</Text>
-          <Text style={styles.actionButtonLabel}>رياضيات</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
+          onPress={openEqModal}
+        >
+          <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
+          <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => openFracModal('main')}>
-          <Text style={styles.actionButtonGlyph}>a⁄b</Text>
-          <Text style={styles.actionButtonLabel}>كسر</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
+          onPress={() => openFracModal('main')}
+        >
+          <View style={styles.miniFrac}>
+            <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
+            <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
+            <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
+          </View>
+          <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => openExpModal('sup')}>
-          <Text style={styles.actionButtonGlyph}>aⁿ</Text>
-          <Text style={styles.actionButtonLabel}>أُس</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
+          onPress={() => openExpModal('sup')}
+        >
+          <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
+          <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => openExpModal('sub')}>
-          <Text style={styles.actionButtonGlyph}>aₙ</Text>
-          <Text style={styles.actionButtonLabel}>دليل سفلي</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
+          onPress={() => openExpModal('sub')}
+        >
+          <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
+          <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
         </Pressable>
       </View>
+
+      {/* Quick row — the 4 symbols this admin actually reaches for most
+          (tracked across every question they've written, see
+          recordSymbolUsage), so the common ones for this subject (θ, π, Ω…)
+          don't need scrolling through the full strip below every time.
+          Empty and hidden entirely until there's real usage history. */}
+      {quickSymbols.length > 0 ? (
+        <View style={styles.quickRow}>
+          <Text style={styles.quickRowLabel}>الأكتر استخدامًا</Text>
+          {quickSymbols.map((btn, i) => (
+            <Pressable
+              key={i}
+              style={({ pressed }) => [styles.symbolButton, styles.quickChip, pressed && styles.pressedScale]}
+              onPress={() => applyButton(btn)}
+            >
+              <Text style={styles.symbolButtonText}>{btn.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {/* Symbols: plain single-character inserts, grouped (Greek · operators
           · comparisons/arrows) with a thin divider between each cluster so
@@ -415,7 +547,11 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
             {gi > 0 ? <View style={styles.groupDivider} /> : null}
             <View style={styles.group}>
               {group.map((btn, i) => (
-                <Pressable key={i} style={styles.symbolButton} onPress={() => applyButton(btn)}>
+                <Pressable
+                  key={i}
+                  style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                  onPress={() => applyButton(btn)}
+                >
                   <Text style={styles.symbolButtonText}>{btn.label}</Text>
                 </Pressable>
               ))}
@@ -425,13 +561,21 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
       </ScrollView>
 
       <TextInput
+        {...rest}
         ref={inputRef}
-        style={style}
         value={value}
         onChangeText={onChangeText}
         selection={selection}
         onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-        {...rest}
+        onFocus={(e) => {
+          setMainFocused(true);
+          rest.onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setMainFocused(false);
+          rest.onBlur?.(e);
+        }}
+        style={[style, mainFocused && styles.mainInputFocused]}
       />
 
       {/* Live preview — the closest a plain RN TextInput can get to a
@@ -478,14 +622,27 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
               keyboardShouldPersistTaps="always"
             >
               <View style={styles.group}>
-                <Pressable style={styles.symbolButton} onPress={() => openFracModal('eq')}>
-                  <Text style={styles.symbolButtonText}>a⁄b</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                  onPress={() => openFracModal('eq')}
+                >
+                  <View style={styles.miniFrac}>
+                    <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
+                    <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
+                    <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
+                  </View>
                 </Pressable>
-                <Pressable style={styles.symbolButton} onPress={() => openExpModal('sup', 'eq')}>
-                  <Text style={styles.symbolButtonText}>aⁿ</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                  onPress={() => openExpModal('sup', 'eq')}
+                >
+                  <MaterialCommunityIcons name="format-superscript" size={17} color={colors.violet} />
                 </Pressable>
-                <Pressable style={styles.symbolButton} onPress={() => openExpModal('sub', 'eq')}>
-                  <Text style={styles.symbolButtonText}>aₙ</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                  onPress={() => openExpModal('sub', 'eq')}
+                >
+                  <MaterialCommunityIcons name="format-subscript" size={17} color={colors.success} />
                 </Pressable>
               </View>
               {SYMBOL_GROUPS.map((group, gi) => (
@@ -493,7 +650,11 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                   <View style={styles.groupDivider} />
                   <View style={styles.group}>
                     {group.map((btn, i) => (
-                      <Pressable key={i} style={styles.symbolButton} onPress={() => applyEqButton(btn)}>
+                      <Pressable
+                        key={i}
+                        style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                        onPress={() => applyEqButton(btn)}
+                      >
                         <Text style={styles.symbolButtonText}>{btn.label}</Text>
                       </Pressable>
                     ))}
@@ -570,16 +731,16 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                 {fracFocusedField === 'num' ? 'للبسط:' : 'للمقام:'}
               </Text>
               <Pressable
-                style={styles.symbolButton}
+                style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
                 onPress={() => openExpModal('sup', fracFocusedField === 'num' ? 'fracNum' : 'fracDen')}
               >
-                <Text style={styles.symbolButtonText}>aⁿ</Text>
+                <MaterialCommunityIcons name="format-superscript" size={17} color={colors.violet} />
               </Pressable>
               <Pressable
-                style={styles.symbolButton}
+                style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
                 onPress={() => openExpModal('sub', fracFocusedField === 'num' ? 'fracNum' : 'fracDen')}
               >
-                <Text style={styles.symbolButtonText}>aₙ</Text>
+                <MaterialCommunityIcons name="format-subscript" size={17} color={colors.success} />
               </Pressable>
             </View>
 
@@ -673,21 +834,585 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   );
 }
 
+/**
+ * One toolbar (+ its modals) shared by a GROUP of short bare TextInputs —
+ * built for the exam/lesson forms' four multiple-choice fields, which used
+ * to each carry a full copy of MathSymbolInput's own toolbar even though
+ * only one of the four is ever being edited at once. A single instance of
+ * this renders ABOVE the group of fields; each field binds via
+ * getFieldProps(key) and becomes "the active field" — the one every button
+ * below acts on — the instant it's focused, so switching from choice B to
+ * choice D is just tapping into the other box, same as always.
+ *
+ * This deliberately re-implements a slimmed-down copy of MathSymbolInput's
+ * own math/fraction/exponent machinery rather than sharing code with it
+ * directly, since MathSymbolInput owns exactly one field's value/selection
+ * while this hook needs to redirect the same actions to whichever of
+ * several fields last took focus. One simplification versus the per-field
+ * toolbar: the fraction popup here doesn't offer its own inner
+ * exponent/subscript buttons for the numerator/denominator boxes (a
+ * fraction-with-an-exponent-inside-a-multiple-choice-answer is a rare
+ * enough case that the extra plumbing isn't worth it here) — that stays
+ * fully supported wherever a field uses MathSymbolInput directly (the
+ * prompt, the free-response answer, the explanation).
+ *
+ * Undo is tracked per field (historyRef is a map keyed by field key), so
+ * undoing while choice C is focused only ever reverts choice C, even if
+ * choice A was the one most recently edited before you switched fields.
+ */
+export function useSharedMathToolbar(
+  values: Record<string, string>,
+  onChange: (key: string, value: string) => void,
+) {
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const inputRefs = useRef<Record<string, TextInput | null>>({});
+
+  const currentValue = activeKey ? values[activeKey] ?? '' : '';
+  const setCurrentValue = (v: string) => {
+    if (activeKey) onChange(activeKey, v);
+  };
+
+  const historyRef = useRef<Record<string, string[]>>({});
+  const [histCount, setHistCount] = useState(0);
+  const pushHistory = () => {
+    if (!activeKey) return;
+    const stack = historyRef.current[activeKey] ?? [];
+    historyRef.current[activeKey] = [...stack.slice(-9), currentValue];
+    setHistCount(historyRef.current[activeKey].length);
+  };
+  const undo = () => {
+    if (!activeKey) return;
+    const stack = historyRef.current[activeKey] ?? [];
+    const prev = stack.pop();
+    setHistCount(stack.length);
+    if (prev === undefined) return;
+    onChange(activeKey, prev);
+    setSelection({ start: prev.length, end: prev.length });
+    inputRefs.current[activeKey]?.focus();
+  };
+
+  // Same "most used symbols" persistence as MathSymbolInput's own copy —
+  // shares the exact same storage key, so the quick row here and there
+  // reflect one combined usage history rather than two separate counts.
+  const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    SecureStore.getItemAsync(SYMBOL_USAGE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          setUsageCounts(JSON.parse(raw));
+        } catch {
+          // Corrupted/old-format value — ignore, start fresh.
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const recordSymbolUsage = (btn: SymbolButton) => {
+    if (btn.kind !== 'insert') return;
+    setUsageCounts((prev) => {
+      const next = { ...prev, [btn.value]: (prev[btn.value] ?? 0) + 1 };
+      SecureStore.setItemAsync(SYMBOL_USAGE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+  const quickSymbols: SymbolButton[] = Object.entries(usageCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([v]) => ALL_SYMBOLS.find((s) => s.kind === 'insert' && s.value === v))
+    .filter((s): s is SymbolButton => !!s);
+
+  const applyButton = (btn: SymbolButton) => {
+    if (!activeKey) return;
+    pushHistory();
+    recordSymbolUsage(btn);
+    applyInsert(currentValue, selection, setCurrentValue, setSelection, btn);
+    inputRefs.current[activeKey]?.focus();
+  };
+
+  // Exponent/subscript popup — same shape as MathSymbolInput's own, always
+  // targeting whichever field is currently active.
+  const [expModal, setExpModal] = useState<{ mode: 'sup' | 'sub' } | null>(null);
+  const [modalBase, setModalBase] = useState('');
+  const [modalRaised, setModalRaised] = useState('');
+  const openExpModal = (mode: 'sup' | 'sub') => {
+    if (!activeKey) return;
+    const start = Math.min(selection.start, currentValue.length);
+    const end = Math.min(Math.max(selection.end, start), currentValue.length);
+    setModalBase(currentValue.slice(start, end));
+    setModalRaised('');
+    setExpModal({ mode });
+  };
+  const closeExpModal = () => {
+    setExpModal(null);
+    setModalBase('');
+    setModalRaised('');
+  };
+  const previewText = expModal ? modalBase + convertRaised(expModal.mode, modalRaised) : '';
+  const confirmExpModal = () => {
+    if (!expModal || !activeKey) return;
+    const inserted = modalBase + convertRaised(expModal.mode, modalRaised);
+    if (!inserted) {
+      closeExpModal();
+      return;
+    }
+    const start = Math.min(selection.start, currentValue.length);
+    const end = Math.min(Math.max(selection.end, start), currentValue.length);
+    const before = currentValue.slice(0, start);
+    const after = currentValue.slice(end);
+    const nextText = before + inserted + after;
+    const nextCursor = before.length + inserted.length;
+    pushHistory();
+    onChange(activeKey, nextText);
+    setSelection({ start: nextCursor, end: nextCursor });
+    inputRefs.current[activeKey]?.focus();
+    closeExpModal();
+  };
+
+  // Fraction popup — same shape as MathSymbolInput's own, minus the inner
+  // exponent/subscript-in-num/den buttons (see file comment above).
+  const [fracModalOpen, setFracModalOpen] = useState(false);
+  const [fracNum, setFracNum] = useState('');
+  const [fracDen, setFracDen] = useState('');
+  const fracReady = !!(fracNum.trim() && fracDen.trim());
+  const fracRaw = fracReady ? `\\frac{${fracNum.trim()}}{${fracDen.trim()}}` : '';
+  const fracPreviewText = fracReady ? `$${fracRaw}$` : '';
+  const openFracModal = () => {
+    if (!activeKey) return;
+    const start = Math.min(selection.start, currentValue.length);
+    const end = Math.min(Math.max(selection.end, start), currentValue.length);
+    setFracNum(currentValue.slice(start, end));
+    setFracDen('');
+    setFracModalOpen(true);
+  };
+  const closeFracModal = () => {
+    setFracModalOpen(false);
+    setFracNum('');
+    setFracDen('');
+  };
+  const confirmFracModal = () => {
+    if (!fracModalOpen || !fracReady || !activeKey) {
+      closeFracModal();
+      return;
+    }
+    const inserted = `$${fracRaw}$`;
+    const start = Math.min(selection.start, currentValue.length);
+    const end = Math.min(Math.max(selection.end, start), currentValue.length);
+    const before = currentValue.slice(0, start);
+    const after = currentValue.slice(end);
+    const nextText = before + inserted + after;
+    const nextCursor = before.length + inserted.length;
+    pushHistory();
+    onChange(activeKey, nextText);
+    setSelection({ start: nextCursor, end: nextCursor });
+    inputRefs.current[activeKey]?.focus();
+    closeFracModal();
+  };
+
+  // Equation composer — same shape as MathSymbolInput's own.
+  const [eqModalOpen, setEqModalOpen] = useState(false);
+  const [eqText, setEqText] = useState('');
+  const [eqSelection, setEqSelection] = useState({ start: 0, end: 0 });
+  const [eqRange, setEqRange] = useState<{ start: number; end: number } | null>(null);
+  const eqInputRef = useRef<TextInput>(null);
+  const openEqModal = () => {
+    if (!activeKey) return;
+    const start = Math.min(selection.start, currentValue.length);
+    const end = Math.min(Math.max(selection.end, start), currentValue.length);
+    const selected = currentValue.slice(start, end);
+    const inner =
+      selected.length >= 2 && selected.startsWith('$') && selected.endsWith('$') ? selected.slice(1, -1) : selected;
+    setEqRange({ start, end });
+    setEqText(inner);
+    setEqSelection({ start: inner.length, end: inner.length });
+    setEqModalOpen(true);
+  };
+  const closeEqModal = () => {
+    setEqModalOpen(false);
+    setEqText('');
+    setEqRange(null);
+  };
+  const confirmEqModal = () => {
+    if (!eqRange || !activeKey) return;
+    const trimmed = eqText.trim();
+    if (!trimmed) {
+      closeEqModal();
+      return;
+    }
+    const before = currentValue.slice(0, eqRange.start);
+    const after = currentValue.slice(eqRange.end);
+    const inserted = `$${trimmed}$`;
+    const nextText = before + inserted + after;
+    const nextCursor = before.length + inserted.length;
+    pushHistory();
+    onChange(activeKey, nextText);
+    setSelection({ start: nextCursor, end: nextCursor });
+    closeEqModal();
+    inputRefs.current[activeKey]?.focus();
+  };
+  const applyEqButton = (btn: SymbolButton) => {
+    recordSymbolUsage(btn);
+    applyInsert(eqText, eqSelection, setEqText, setEqSelection, btn);
+    eqInputRef.current?.focus();
+  };
+
+  // Disabled look (dimmed, taps ignored) until a field in the group is
+  // actually focused — nothing for the buttons to act on yet otherwise.
+  const disabled = !activeKey;
+
+  const toolbar = (
+    <View pointerEvents={disabled ? 'none' : 'auto'} style={disabled ? styles.sharedToolbarDisabled : undefined}>
+      {histCount > 0 ? (
+        <Pressable style={({ pressed }) => [styles.undoRow, pressed && styles.pressedScale]} onPress={undo} hitSlop={6}>
+          <Text style={styles.undoArrow}>↺</Text>
+          <Text style={styles.undoText}>تراجع</Text>
+        </Pressable>
+      ) : null}
+
+      <View style={styles.actionsRow}>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
+          onPress={openEqModal}
+        >
+          <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
+          <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
+          onPress={openFracModal}
+        >
+          <View style={styles.miniFrac}>
+            <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
+            <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
+            <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
+          </View>
+          <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
+          onPress={() => openExpModal('sup')}
+        >
+          <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
+          <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
+          onPress={() => openExpModal('sub')}
+        >
+          <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
+          <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
+        </Pressable>
+      </View>
+
+      {quickSymbols.length > 0 ? (
+        <View style={styles.quickRow}>
+          <Text style={styles.quickRowLabel}>الأكتر استخدامًا</Text>
+          {quickSymbols.map((btn, i) => (
+            <Pressable
+              key={i}
+              style={({ pressed }) => [styles.symbolButton, styles.quickChip, pressed && styles.pressedScale]}
+              onPress={() => applyButton(btn)}
+            >
+              <Text style={styles.symbolButtonText}>{btn.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbar}
+        contentContainerStyle={styles.toolbarContent}
+        keyboardShouldPersistTaps="always"
+      >
+        {SYMBOL_GROUPS.map((group, gi) => (
+          <React.Fragment key={gi}>
+            {gi > 0 ? <View style={styles.groupDivider} /> : null}
+            <View style={styles.group}>
+              {group.map((btn, i) => (
+                <Pressable
+                  key={i}
+                  style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                  onPress={() => applyButton(btn)}
+                >
+                  <Text style={styles.symbolButtonText}>{btn.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </React.Fragment>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  const modals = (
+    <>
+      <Modal visible={eqModalOpen} transparent animationType="fade" onRequestClose={closeEqModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>إدراج معادلة</Text>
+            <Text style={styles.modalHint}>
+              اكتب المعادلة هنا وشوف شكلها بيتغير فورًا تحت — لما تخلص دوس "إدراج" وهتتحط في مكان المؤشر.
+            </Text>
+
+            <TextInput
+              ref={eqInputRef}
+              style={styles.eqInput}
+              value={eqText}
+              onChangeText={setEqText}
+              selection={eqSelection}
+              onSelectionChange={(e) => setEqSelection(e.nativeEvent.selection)}
+              placeholder="v = v0 + a*t"
+              placeholderTextColor={colors.textFaint}
+              autoFocus
+              multiline
+            />
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.eqToolbar}
+              contentContainerStyle={styles.toolbarContent}
+              keyboardShouldPersistTaps="always"
+            >
+              {SYMBOL_GROUPS.map((group, gi) => (
+                <React.Fragment key={gi}>
+                  {gi > 0 ? <View style={styles.groupDivider} /> : null}
+                  <View style={styles.group}>
+                    {group.map((btn, i) => (
+                      <Pressable
+                        key={i}
+                        style={({ pressed }) => [styles.symbolButton, pressed && styles.pressedScale]}
+                        onPress={() => applyEqButton(btn)}
+                      >
+                        <Text style={styles.symbolButtonText}>{btn.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </React.Fragment>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalPreviewWrap}>
+              <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
+              {eqText.trim() ? (
+                <MathText text={`$${eqText.trim()}$`} color={colors.accent} fontSize={20} style={{ flex: 1 }} />
+              ) : (
+                <Text style={styles.modalPreviewText}>—</Text>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={closeEqModal}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmButton, !eqText.trim() && styles.modalConfirmButtonDisabled]}
+                onPress={confirmEqModal}
+                disabled={!eqText.trim()}
+              >
+                <Text style={styles.modalConfirmText}>إدراج</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={fracModalOpen} transparent animationType="fade" onRequestClose={closeFracModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>إدراج كسر</Text>
+            <Text style={styles.modalHint}>اكتب البسط في الخانة الأولى، والمقام في التانية — هتتحط شرطة كسر حقيقية في مكان المؤشر الحالي.</Text>
+
+            <View style={styles.modalFieldsRow}>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>البسط</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={fracNum}
+                  onChangeText={setFracNum}
+                  placeholder="V"
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!fracNum}
+                />
+              </View>
+              <Text style={styles.modalOperator}>/</Text>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>المقام</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={fracDen}
+                  onChangeText={setFracDen}
+                  placeholder="R"
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!!fracNum}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalPreviewWrap}>
+              <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
+              {fracReady ? (
+                <MathText text={fracPreviewText} color={colors.accent} fontSize={20} style={styles.modalPreviewText} />
+              ) : (
+                <Text style={styles.modalPreviewText}>—</Text>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={closeFracModal}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmButton, !fracReady && styles.modalConfirmButtonDisabled]}
+                onPress={confirmFracModal}
+                disabled={!fracReady}
+              >
+                <Text style={styles.modalConfirmText}>إدراج</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!expModal} transparent animationType="fade" onRequestClose={closeExpModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{expModal?.mode === 'sup' ? 'إدراج أُس' : 'إدراج دليل سفلي'}</Text>
+            <Text style={styles.modalHint}>
+              اكتب الأساس في الخانة الأولى، و{expModal?.mode === 'sup' ? 'الأُس' : 'الدليل'} في التانية — هيتحطوا في مكان المؤشر الحالي.
+            </Text>
+
+            <View style={styles.modalFieldsRow}>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>الأساس</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={modalBase}
+                  onChangeText={setModalBase}
+                  placeholder="R"
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!modalBase}
+                />
+              </View>
+              <Text style={styles.modalOperator}>{expModal?.mode === 'sup' ? '^' : '_'}</Text>
+              <View style={styles.modalField}>
+                <Text style={styles.modalFieldLabel}>{expModal?.mode === 'sup' ? 'الأُس' : 'الدليل'}</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={modalRaised}
+                  onChangeText={setModalRaised}
+                  placeholder={expModal?.mode === 'sup' ? 'n' : '1'}
+                  placeholderTextColor={colors.textFaint}
+                  autoFocus={!!modalBase}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalPreviewWrap}>
+              <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
+              <Text style={styles.modalPreviewText} numberOfLines={1}>
+                {previewText || '—'}
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={closeExpModal}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmButton, !previewText && styles.modalConfirmButtonDisabled]}
+                onPress={confirmExpModal}
+                disabled={!previewText}
+              >
+                <Text style={styles.modalConfirmText}>إدراج</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+
+  const getFieldProps = (key: string) => ({
+    ref: (r: TextInput | null) => {
+      inputRefs.current[key] = r;
+    },
+    value: values[key] ?? '',
+    onChangeText: (v: string) => onChange(key, v),
+    onFocus: () => {
+      setActiveKey(key);
+      const v = values[key] ?? '';
+      setSelection({ start: v.length, end: v.length });
+    },
+    onSelectionChange: (e: { nativeEvent: { selection: { start: number; end: number } } }) => {
+      if (activeKey === key) setSelection(e.nativeEvent.selection);
+    },
+    selection: activeKey === key ? selection : undefined,
+  });
+
+  return { toolbar, modals, getFieldProps, activeKey };
+}
+
 const styles = StyleSheet.create({
+  // Shared press feedback for every button in this file — a quick scale-
+  // down while held, using Pressable's own `pressed` render-state (no
+  // Reanimated/worklets needed for something this small).
+  pressedScale: { transform: [{ scale: 0.92 }] },
+
+  undoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginBottom: spacing.xs,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  undoArrow: { color: colors.primary, fontSize: 13 },
+  undoText: { color: colors.textMuted, fontSize: 11, fontFamily: fonts.medium },
+
   actionsRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
   actionButton: {
     flex: 1,
     paddingVertical: 6,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.primary + '40',
-    backgroundColor: colors.primary + '14',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
   },
-  actionButtonGlyph: { color: colors.primary, fontSize: 15, fontFamily: fonts.semiBold },
-  actionButtonLabel: { color: colors.primary, fontSize: 10, fontFamily: fonts.medium },
+  // Each action button gets its own accent color (drawn from the app's
+  // existing palette — no new colors introduced) so the four are
+  // distinguishable at a glance instead of four identical tinted squares.
+  actionButtonMath: { borderColor: colors.primary + '40', backgroundColor: colors.primary + '14' },
+  actionButtonFrac: { borderColor: colors.accent + '40', backgroundColor: colors.accent + '14' },
+  actionButtonExp: { borderColor: colors.violet + '40', backgroundColor: colors.violet + '14' },
+  actionButtonSub: { borderColor: colors.success + '40', backgroundColor: colors.success + '14' },
+  actionButtonGlyph: { fontSize: 15, fontFamily: fonts.semiBold },
+  actionButtonLabel: { fontSize: 10, fontFamily: fonts.medium },
+
+  // A tiny real stacked fraction ("a" over a line over "b") used as the
+  // Fraction button's own icon — doubles as a live preview of what tapping
+  // it actually produces, rather than an abstract glyph like "a⁄b".
+  miniFrac: { alignItems: 'center', justifyContent: 'center' },
+  miniFracText: { fontFamily: fonts.serifBold, fontSize: 12, lineHeight: 13 },
+  miniFracBar: { width: 13, height: 1.5, marginVertical: 1, borderRadius: 1 },
+
+  quickRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs, flexWrap: 'wrap' },
+  quickRowLabel: { color: colors.textFaint, fontSize: 9.5, fontFamily: fonts.medium, marginInlineEnd: 2 },
+  quickChip: { borderColor: colors.primary + '50', backgroundColor: colors.primary + '12' },
+
+  mainInputFocused: { borderColor: colors.primary },
+
+  // useSharedMathToolbar's own dimmed look before any field in its group
+  // has been focused yet — nothing for the buttons to act on.
+  sharedToolbarDisabled: { opacity: 0.4 },
 
   toolbar: { marginBottom: spacing.xs },
   toolbarContent: { alignItems: 'center', paddingVertical: 2, paddingHorizontal: 2 },
