@@ -10,7 +10,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { toSubUnicode, toSupUnicode } from '@/components/MathText';
+import { MathText, toSubUnicode, toSupUnicode } from '@/components/MathText';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 
 /**
@@ -75,8 +75,64 @@ const SYMBOL_GROUPS: SymbolButton[][] = [
   ],
 ];
 
-const MATH_WRAP: SymbolButton = { label: '$…$', kind: 'wrap', open: '$', close: '$' };
 const BOLD_WRAP: SymbolButton = { label: 'B', kind: 'wrap', open: '**', close: '**' };
+
+// Which text field a symbol/exponent insert should land in — the main
+// prompt/choice/explanation field, or (when the equation composer below is
+// open) that modal's own equation field. Lets the exact same symbol chips
+// and exponent modal serve both places instead of duplicating the logic.
+type InsertTarget = 'main' | 'eq';
+
+/** Pure text-splice used by every insert/wrap button, parameterized over
+ * which field (value/selection/setters) it's acting on — shared by the main
+ * field's toolbar and the equation composer's own mini-toolbar below. */
+function applyInsert(
+  currentValue: string,
+  currentSelection: { start: number; end: number },
+  setValue: (v: string) => void,
+  setSelection: (s: { start: number; end: number }) => void,
+  btn: SymbolButton,
+) {
+  const start = Math.min(currentSelection.start, currentValue.length);
+  const end = Math.min(Math.max(currentSelection.end, start), currentValue.length);
+  const before = currentValue.slice(0, start);
+  const selected = currentValue.slice(start, end);
+  const after = currentValue.slice(end);
+
+  let nextText: string;
+  let nextCursor: number;
+  if (btn.kind === 'insert') {
+    nextText = before + btn.value + after;
+    nextCursor = start + btn.value.length;
+  } else if (selected) {
+    // Real selection: wrap it, cursor lands right after the closing
+    // marker — an "end of what was just inserted" position, which RN's
+    // controlled `selection` prop places reliably.
+    nextText = before + btn.open + selected + btn.close + after;
+    nextCursor = start + btn.open.length + selected.length + btn.close.length;
+  } else {
+    // Nothing selected: insert ONLY the marker itself, not an empty
+    // open+close pair — this used to insert "$$" / "****" in one shot
+    // with the cursor meant to land BETWEEN the two halves, but a
+    // mid-string cursor position is exactly what Android's TextInput
+    // does not reliably honor via the controlled `selection` prop (it
+    // was leaving the cursor at the very end instead, past both
+    // markers, so anything typed next landed outside the $...$/**...**
+    // span). Inserting one marker at a time sidesteps that entirely:
+    // the cursor only ever needs to land right after what was just
+    // inserted — an end position, same as every plain symbol button
+    // above, which never had this problem. Tapping the same button
+    // again after typing the content inserts the matching closing
+    // marker the same way (works because open === close for both wrap
+    // buttons actually in use here, $ and **) — the same toggle-on/
+    // toggle-off feel as pressing Ctrl+B twice in a text editor.
+    nextText = before + btn.open + after;
+    nextCursor = start + btn.open.length;
+  }
+
+  setValue(nextText);
+  setSelection({ start: nextCursor, end: nextCursor });
+}
 
 interface MathSymbolInputProps extends Omit<TextInputProps, 'onChangeText' | 'value'> {
   value: string;
@@ -90,63 +146,49 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   // Exponent/subscript popup state — null when closed. `base`/`raised` are
   // the two boxes' own live text; converted to real Unicode only at the
   // moment of confirming (and for the live preview below the boxes).
-  const [expModal, setExpModal] = useState<{ mode: 'sup' | 'sub' } | null>(null);
+  // `target` says which field gets the result — the main input, or the
+  // equation composer's own field when opened from inside that modal.
+  const [expModal, setExpModal] = useState<{ mode: 'sup' | 'sub'; target: InsertTarget } | null>(null);
   const [modalBase, setModalBase] = useState('');
   const [modalRaised, setModalRaised] = useState('');
 
+  // Equation composer — replaces the old behavior where tapping "$…$" wrapped
+  // the current selection in raw "$...$" markers in place. Now it opens a
+  // dedicated box (closer to Google Docs'/Canva's own equation editor):
+  // type the equation on its own, see it rendered live exactly as it'll
+  // look (same MathText the student's screen uses), then "Insert" splices
+  // the finished "$...$" span into the main field at the cursor/selection.
+  // Selecting an existing "$...$" span first and tapping the button reopens
+  // it here pre-filled, so editing existing math also goes through this
+  // instead of hand-editing raw markers.
+  const [eqModalOpen, setEqModalOpen] = useState(false);
+  const [eqText, setEqText] = useState('');
+  const [eqSelection, setEqSelection] = useState({ start: 0, end: 0 });
+  const [eqRange, setEqRange] = useState<{ start: number; end: number } | null>(null);
+  const eqInputRef = useRef<TextInput>(null);
+
   const applyButton = (btn: SymbolButton) => {
-    const start = Math.min(selection.start, value.length);
-    const end = Math.min(Math.max(selection.end, start), value.length);
-    const before = value.slice(0, start);
-    const selected = value.slice(start, end);
-    const after = value.slice(end);
-
-    let nextText: string;
-    let nextCursor: number;
-    if (btn.kind === 'insert') {
-      nextText = before + btn.value + after;
-      nextCursor = start + btn.value.length;
-    } else if (selected) {
-      // Real selection: wrap it, cursor lands right after the closing
-      // marker — an "end of what was just inserted" position, which RN's
-      // controlled `selection` prop places reliably.
-      nextText = before + btn.open + selected + btn.close + after;
-      nextCursor = start + btn.open.length + selected.length + btn.close.length;
-    } else {
-      // Nothing selected: insert ONLY the marker itself, not an empty
-      // open+close pair — this used to insert "$$" / "****" in one shot
-      // with the cursor meant to land BETWEEN the two halves, but a
-      // mid-string cursor position is exactly what Android's TextInput
-      // does not reliably honor via the controlled `selection` prop (it
-      // was leaving the cursor at the very end instead, past both
-      // markers, so anything typed next landed outside the $...$/**...**
-      // span). Inserting one marker at a time sidesteps that entirely:
-      // the cursor only ever needs to land right after what was just
-      // inserted — an end position, same as every plain symbol button
-      // above, which never had this problem. Tapping the same button
-      // again after typing the content inserts the matching closing
-      // marker the same way (works because open === close for both wrap
-      // buttons actually in use here, $ and **) — the same toggle-on/
-      // toggle-off feel as pressing Ctrl+B twice in a text editor.
-      nextText = before + btn.open + after;
-      nextCursor = start + btn.open.length;
-    }
-
-    onChangeText(nextText);
-    setSelection({ start: nextCursor, end: nextCursor });
+    applyInsert(value, selection, onChangeText, setSelection, btn);
     // A button tap can blur the field on Android — pull focus back so the
     // next keystroke lands right where it should, cursor already moved.
     inputRef.current?.focus();
   };
 
-  const openExpModal = (mode: 'sup' | 'sub') => {
-    const start = Math.min(selection.start, value.length);
-    const end = Math.min(Math.max(selection.end, start), value.length);
+  const applyEqButton = (btn: SymbolButton) => {
+    applyInsert(eqText, eqSelection, setEqText, setEqSelection, btn);
+    eqInputRef.current?.focus();
+  };
+
+  const openExpModal = (mode: 'sup' | 'sub', target: InsertTarget = 'main') => {
+    const val = target === 'main' ? value : eqText;
+    const sel = target === 'main' ? selection : eqSelection;
+    const start = Math.min(sel.start, val.length);
+    const end = Math.min(Math.max(sel.end, start), val.length);
     // Whatever's already selected becomes the starting Base — the common
     // case is selecting "R" (or "v") right before reaching for this.
-    setModalBase(value.slice(start, end));
+    setModalBase(val.slice(start, end));
     setModalRaised('');
-    setExpModal({ mode });
+    setExpModal({ mode, target });
   };
 
   const closeExpModal = () => {
@@ -168,10 +210,13 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
 
   const confirmExpModal = () => {
     if (!expModal) return;
-    const start = Math.min(selection.start, value.length);
-    const end = Math.min(Math.max(selection.end, start), value.length);
-    const before = value.slice(0, start);
-    const after = value.slice(end);
+    const target = expModal.target;
+    const val = target === 'main' ? value : eqText;
+    const sel = target === 'main' ? selection : eqSelection;
+    const start = Math.min(sel.start, val.length);
+    const end = Math.min(Math.max(sel.end, start), val.length);
+    const before = val.slice(0, start);
+    const after = val.slice(end);
     const inserted = modalBase + convertRaised(expModal.mode, modalRaised);
     if (!inserted) {
       closeExpModal();
@@ -179,13 +224,57 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     }
     const nextText = before + inserted + after;
     const nextCursor = before.length + inserted.length;
-    onChangeText(nextText);
-    setSelection({ start: nextCursor, end: nextCursor });
+    if (target === 'main') {
+      onChangeText(nextText);
+      setSelection({ start: nextCursor, end: nextCursor });
+      inputRef.current?.focus();
+    } else {
+      setEqText(nextText);
+      setEqSelection({ start: nextCursor, end: nextCursor });
+      eqInputRef.current?.focus();
+    }
     closeExpModal();
-    inputRef.current?.focus();
   };
 
   const previewText = expModal ? modalBase + convertRaised(expModal.mode, modalRaised) : '';
+
+  const openEqModal = () => {
+    const start = Math.min(selection.start, value.length);
+    const end = Math.min(Math.max(selection.end, start), value.length);
+    const selected = value.slice(start, end);
+    // Re-opening on an already-selected "$...$" span edits it in place
+    // instead of nesting a second pair of markers around it.
+    const inner =
+      selected.length >= 2 && selected.startsWith('$') && selected.endsWith('$') ? selected.slice(1, -1) : selected;
+    setEqRange({ start, end });
+    setEqText(inner);
+    setEqSelection({ start: inner.length, end: inner.length });
+    setEqModalOpen(true);
+  };
+
+  const closeEqModal = () => {
+    setEqModalOpen(false);
+    setEqText('');
+    setEqRange(null);
+  };
+
+  const confirmEqModal = () => {
+    if (!eqRange) return;
+    const trimmed = eqText.trim();
+    if (!trimmed) {
+      closeEqModal();
+      return;
+    }
+    const before = value.slice(0, eqRange.start);
+    const after = value.slice(eqRange.end);
+    const inserted = `$${trimmed}$`;
+    const nextText = before + inserted + after;
+    const nextCursor = before.length + inserted.length;
+    onChangeText(nextText);
+    setSelection({ start: nextCursor, end: nextCursor });
+    closeEqModal();
+    inputRef.current?.focus();
+  };
 
   return (
     <View>
@@ -193,7 +282,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
           treated, not a single inserted character — visually set apart from
           the plain symbol chips below with a tinted, bordered card each. */}
       <View style={styles.actionsRow}>
-        <Pressable style={styles.actionButton} onPress={() => applyButton(MATH_WRAP)}>
+        <Pressable style={styles.actionButton} onPress={openEqModal}>
           <Text style={styles.actionButtonGlyph}>$…$</Text>
           <Text style={styles.actionButtonLabel}>رياضيات</Text>
         </Pressable>
@@ -244,6 +333,96 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
         onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
         {...rest}
       />
+
+      {/* Live preview — the closest a plain RN TextInput can get to a
+          Docs/Canva-style "see it formatted as you type" experience: the
+          box you type in can only ever show one uniform font (a real RN
+          limitation, see MathText.tsx), so instead this mirrors the exact
+          finished look — bold, math, the app's serif font and all — right
+          underneath, updating on every keystroke since it just re-renders
+          `value` through the same MathText the student's own screen uses. */}
+      {value.trim() ? (
+        <View style={styles.previewCard}>
+          <Text style={styles.previewLabel}>👁 معاينة الشكل النهائي</Text>
+          <MathText text={value} color={colors.text} fontSize={14} style={styles.previewText} />
+        </View>
+      ) : null}
+
+      {/* Equation composer — see the comment on eqModalOpen above. */}
+      <Modal visible={eqModalOpen} transparent animationType="fade" onRequestClose={closeEqModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>إدراج معادلة</Text>
+            <Text style={styles.modalHint}>
+              اكتب المعادلة هنا وشوف شكلها بيتغير فورًا تحت — لما تخلص دوس "إدراج" وهتتحط في مكان المؤشر.
+            </Text>
+
+            <TextInput
+              ref={eqInputRef}
+              style={styles.eqInput}
+              value={eqText}
+              onChangeText={setEqText}
+              selection={eqSelection}
+              onSelectionChange={(e) => setEqSelection(e.nativeEvent.selection)}
+              placeholder="v = v0 + a*t"
+              placeholderTextColor={colors.textFaint}
+              autoFocus
+              multiline
+            />
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.eqToolbar}
+              contentContainerStyle={styles.toolbarContent}
+              keyboardShouldPersistTaps="always"
+            >
+              <View style={styles.group}>
+                <Pressable style={styles.symbolButton} onPress={() => openExpModal('sup', 'eq')}>
+                  <Text style={styles.symbolButtonText}>aⁿ</Text>
+                </Pressable>
+                <Pressable style={styles.symbolButton} onPress={() => openExpModal('sub', 'eq')}>
+                  <Text style={styles.symbolButtonText}>aₙ</Text>
+                </Pressable>
+              </View>
+              {SYMBOL_GROUPS.map((group, gi) => (
+                <React.Fragment key={gi}>
+                  <View style={styles.groupDivider} />
+                  <View style={styles.group}>
+                    {group.map((btn, i) => (
+                      <Pressable key={i} style={styles.symbolButton} onPress={() => applyEqButton(btn)}>
+                        <Text style={styles.symbolButtonText}>{btn.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </React.Fragment>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalPreviewWrap}>
+              <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
+              {eqText.trim() ? (
+                <MathText text={`$${eqText.trim()}$`} color={colors.accent} fontSize={20} style={{ flex: 1 }} />
+              ) : (
+                <Text style={styles.modalPreviewText}>—</Text>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={closeEqModal}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmButton, !eqText.trim() && styles.modalConfirmButtonDisabled]}
+                onPress={confirmEqModal}
+                disabled={!eqText.trim()}
+              >
+                <Text style={styles.modalConfirmText}>إدراج</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!expModal} transparent animationType="fade" onRequestClose={closeExpModal}>
         <View style={styles.modalOverlay}>
@@ -340,6 +519,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   symbolButtonText: { color: colors.text, fontSize: 15, fontFamily: fonts.semiBold },
+
+  previewCard: {
+    marginTop: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  previewLabel: { color: colors.textFaint, fontSize: 10, fontFamily: fonts.medium, marginBottom: 4 },
+  previewText: { marginTop: 0 },
+
+  eqInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 12,
+    fontSize: 16,
+    minHeight: 56,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
+    textAlignVertical: 'top',
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  eqToolbar: { marginTop: spacing.sm },
 
   modalOverlay: {
     flex: 1,
