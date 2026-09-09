@@ -77,10 +77,12 @@ const SYMBOL_GROUPS: SymbolButton[][] = [
 ];
 
 // Which text field a symbol/exponent insert should land in — the main
-// prompt/choice/explanation field, or (when the equation composer below is
-// open) that modal's own equation field. Lets the exact same symbol chips
-// and exponent modal serve both places instead of duplicating the logic.
-type InsertTarget = 'main' | 'eq';
+// prompt/choice/explanation field, the equation composer's own field, or
+// (new) whichever of the Fraction popup's own numerator/denominator boxes
+// was last focused — see fracFocusedField below. Lets the exact same
+// symbol chips and exponent modal serve all of these instead of
+// duplicating the logic per field.
+type InsertTarget = 'main' | 'eq' | 'fracNum' | 'fracDen';
 
 /** Pure text-splice used by every insert/wrap button, parameterized over
  * which field (value/selection/setters) it's acting on — shared by the main
@@ -169,18 +171,31 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   // Fraction popup — same shape as the exponent/subscript popup above (two
   // plain boxes, live preview, same InsertTarget so it works both from the
   // main toolbar and from inside the equation composer. The inserted text
-  // is raw "\frac{num}{den}" LaTeX — MathText.tsx's own expandFracAndSqrt /
-  // matchStandaloneFraction logic decides how it renders: a real stacked
-  // horizontal bar when the whole field is nothing but this one fraction,
-  // or a safe inline "num/den" (parens added via isSimpleToken) when it
-  // sits inside a longer line — so a fraction from the main toolbar is
-  // wrapped in its own "$...$" span (it isn't naturally math markup),
-  // while one built inside the equation composer is left bare, since that
-  // whole composer field gets wrapped in a single "$...$" itself at its
-  // own confirm step.
+  // is raw "\frac{num}{den}" LaTeX — MathText.tsx's own splitFracSegments/
+  // StackedFraction logic decides how it renders: a real stacked horizontal
+  // bar whenever this exact \frac{}{} shows up in a $...$ span (whether it's
+  // the only thing there or sits next to other text), or a safe inline
+  // "num/den" (parens added via isSimpleToken) only when it ends up nested
+  // inside another fraction or a square root — so a fraction from the main
+  // toolbar is wrapped in its own "$...$" span (it isn't naturally math
+  // markup), while one built inside the equation composer is left bare,
+  // since that whole composer field gets wrapped in a single "$...$" itself
+  // at its own confirm step.
+  //
+  // The numerator/denominator boxes can themselves take an exponent or
+  // subscript — reusing the exact same exponent/subscript popup above via
+  // two more InsertTargets ('fracNum'/'fracDen'). Since these two boxes are
+  // usually a single short symbol rather than a field with a meaningful
+  // cursor position, "Base" is seeded from the WHOLE current box content
+  // (not a selection inside it) and the result replaces the box outright —
+  // simpler than tracking a separate selection per box, and matches how
+  // short these fields actually are in practice. fracFocusedField tracks
+  // which of the two was last tapped, so the popup's own small
+  // exponent/subscript buttons (below) know which box to act on.
   const [fracModal, setFracModal] = useState<{ target: InsertTarget } | null>(null);
   const [fracNum, setFracNum] = useState('');
   const [fracDen, setFracDen] = useState('');
+  const [fracFocusedField, setFracFocusedField] = useState<'num' | 'den'>('num');
 
   const applyButton = (btn: SymbolButton) => {
     applyInsert(value, selection, onChangeText, setSelection, btn);
@@ -195,6 +210,15 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   };
 
   const openExpModal = (mode: 'sup' | 'sub', target: InsertTarget = 'main') => {
+    if (target === 'fracNum' || target === 'fracDen') {
+      // No cursor/selection to speak of in these two short boxes — the
+      // whole current value becomes the starting Base, and confirming
+      // appends the exponent/subscript to it (see confirmExpModal).
+      setModalBase(target === 'fracNum' ? fracNum : fracDen);
+      setModalRaised('');
+      setExpModal({ mode, target });
+      return;
+    }
     const val = target === 'main' ? value : eqText;
     const sel = target === 'main' ? selection : eqSelection;
     const start = Math.min(sel.start, val.length);
@@ -226,17 +250,22 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   const confirmExpModal = () => {
     if (!expModal) return;
     const target = expModal.target;
+    const inserted = modalBase + convertRaised(expModal.mode, modalRaised);
+    if (!inserted) {
+      closeExpModal();
+      return;
+    }
+    if (target === 'fracNum' || target === 'fracDen') {
+      (target === 'fracNum' ? setFracNum : setFracDen)(inserted);
+      closeExpModal();
+      return;
+    }
     const val = target === 'main' ? value : eqText;
     const sel = target === 'main' ? selection : eqSelection;
     const start = Math.min(sel.start, val.length);
     const end = Math.min(Math.max(sel.end, start), val.length);
     const before = val.slice(0, start);
     const after = val.slice(end);
-    const inserted = modalBase + convertRaised(expModal.mode, modalRaised);
-    if (!inserted) {
-      closeExpModal();
-      return;
-    }
     const nextText = before + inserted + after;
     const nextCursor = before.length + inserted.length;
     if (target === 'main') {
@@ -504,8 +533,8 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>إدراج كسر</Text>
             <Text style={styles.modalHint}>
-              اكتب البسط في الخانة الأولى، والمقام في التانية — هيتحطوا في مكان المؤشر الحالي كشرطة كسر حقيقية لو
-              الكسر ده لوحده في الخانة، أو "بسط/مقام" لو جوه جملة أطول، وتقدر تستخدمها جوه معادلة أو في نص عادي.
+              اكتب البسط في الخانة الأولى، والمقام في التانية — هتتحط شرطة كسر حقيقية في مكان المؤشر الحالي. تقدر
+              كمان تدوس جوه أي خانة منهم وتستخدم زرار "أس" أو "دليل سفلي" تحت عشان تضيف أس أو دليل سفلي للي كاتبه.
             </Text>
 
             <View style={styles.modalFieldsRow}>
@@ -515,6 +544,7 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                   style={styles.modalInput}
                   value={fracNum}
                   onChangeText={setFracNum}
+                  onFocus={() => setFracFocusedField('num')}
                   placeholder="V"
                   placeholderTextColor={colors.textFaint}
                   autoFocus={!fracNum}
@@ -527,11 +557,30 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                   style={styles.modalInput}
                   value={fracDen}
                   onChangeText={setFracDen}
+                  onFocus={() => setFracFocusedField('den')}
                   placeholder="R"
                   placeholderTextColor={colors.textFaint}
                   autoFocus={!!fracNum}
                 />
               </View>
+            </View>
+
+            <View style={styles.fracExpRow}>
+              <Text style={styles.fracExpRowLabel}>
+                {fracFocusedField === 'num' ? 'للبسط:' : 'للمقام:'}
+              </Text>
+              <Pressable
+                style={styles.symbolButton}
+                onPress={() => openExpModal('sup', fracFocusedField === 'num' ? 'fracNum' : 'fracDen')}
+              >
+                <Text style={styles.symbolButtonText}>aⁿ</Text>
+              </Pressable>
+              <Pressable
+                style={styles.symbolButton}
+                onPress={() => openExpModal('sub', fracFocusedField === 'num' ? 'fracNum' : 'fracDen')}
+              >
+                <Text style={styles.symbolButtonText}>aₙ</Text>
+              </Pressable>
             </View>
 
             <View style={styles.modalPreviewWrap}>
@@ -567,7 +616,9 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
             </Text>
             <Text style={styles.modalHint}>
               اكتب الأساس في الخانة الأولى، و{expModal?.mode === 'sup' ? 'الأُس' : 'الدليل'} في التانية —
-              هيتحطوا في مكان المؤشر الحالي.
+              {expModal?.target === 'fracNum' || expModal?.target === 'fracDen'
+                ? ' هيتحطوا في الخانة اللي فتحت منها الحوار ده.'
+                : ' هيتحطوا في مكان المؤشر الحالي.'}
             </Text>
 
             <View style={styles.modalFieldsRow}>
@@ -714,6 +765,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modalOperator: { color: colors.textFaint, fontSize: 18, fontFamily: fonts.bold, marginBottom: 12 },
+  // Row of "apply to whichever box is focused" buttons under the
+  // numerator/denominator fields — see fracFocusedField's own comment.
+  fracExpRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  fracExpRowLabel: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.medium },
   modalPreviewWrap: {
     flexDirection: 'row',
     alignItems: 'center',
