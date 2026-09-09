@@ -71,18 +71,26 @@ const LATIN_RE = /[A-Za-z0-9]/;
  * convention real typeset math uses — so it reads as a distinct,
  * deliberate result rather than blending into the surrounding prose.
  *
- * ONE narrow exception to the "always plain inline text, never a stacked
- * View" rule above: when the ENTIRE input is nothing but a single bare
- * "$\frac{a}{b}$" (no surrounding text, no sibling math, nothing else at
- * all — e.g. a free-response answer that's just one formula on its own),
- * there is no paragraph to reflow around it, so none of the RTL
- * flex-wrap/row-reverse breakage described above can happen. In that one
- * case MathText returns a real stacked fraction (numerator, a horizontal
- * bar, denominator) built from plain <View>/<Text>, via
- * matchStandaloneFraction/StackedFraction below. Any fraction that isn't
- * the *entire* content — one embedded mid-sentence, or sitting next to
- * other math — still safely degrades to the old inline "a/b" notation via
- * expandFracAndSqrt, exactly as before.
+ * UPDATE: fractions now always render as a real stacked bar (numerator,
+ * horizontal line, denominator), not just the old plain-text "a/b" degrade
+ * — this was a deliberate choice after weighing the RTL-wrapping bug
+ * above, made explicitly at the user's request after being warned about
+ * that history. The trick that keeps it safe: a bare "\frac{a}{b}$" (the
+ * *entire* content of its own $...$ span — see matchBareFraction) is never
+ * inlined into the middle of a wrapping line at all. Instead, buildBlocks()
+ * below splits the whole input into a top-to-bottom stack of blocks: each
+ * run of ordinary prose/math (everything BETWEEN fraction spans) still
+ * renders as one single native <Text> tree exactly as before — full native
+ * bidi, zero risk — and each bare fraction gets its own StackedFraction
+ * block sitting between them. Blocks simply stack vertically in source
+ * order, which needs no bidi awareness at all (unlike the old flex-wrap
+ * row, a plain top-to-bottom stack is direction-agnostic, so it can't
+ * reorder anything relative to anything else). The one place this still
+ * can't help: a fraction combined with other content INSIDE the same
+ * $...$ span (e.g. "$I = \frac{V}{R}$", or a fraction that's part of a
+ * bigger expression) isn't "bare" on its own, so it still safely degrades
+ * to inline "V/R" text via expandFracAndSqrt — only a fraction that is the
+ * whole of its own $...$ span gets the real bar.
  */
 export function MathText({
   text,
@@ -107,49 +115,85 @@ export function MathText({
    * ellipsis instead of pushing the layout, same as any other <Text>. */
   numberOfLines?: number;
 }) {
-  const standaloneFrac = matchStandaloneFraction(text);
-  if (standaloneFrac) {
-    return (
-      <StackedFraction num={standaloneFrac.num} den={standaloneFrac.den} color={color} fontSize={fontSize} style={style} />
-    );
+  const blocks = buildBlocks(text);
+
+  // Fast path — content with no bare fraction span at all (still the
+  // overwhelming majority of questions/answers) renders exactly as before:
+  // one single native <Text> tree, zero behavior change.
+  if (blocks.length === 1 && blocks[0].type === 'prose') {
+    return renderProseBlock(blocks[0].nodes, { color, fontSize, style, bold, numberOfLines });
+  }
+  // Content that's nothing but one bare fraction, with no other text at
+  // all — the previous "standalone" case — renders the same as before too
+  // (no extra wrapping View, the caller's style applies straight to it).
+  if (blocks.length === 1 && blocks[0].type === 'fracBlock') {
+    return <StackedFraction num={blocks[0].num} den={blocks[0].den} color={color} fontSize={fontSize} style={style} />;
   }
 
-  const nodes = buildInlineNodes(text);
-  const rtl = isRtlText(text);
+  // Mixed content (prose and one or more bare fractions together): stack
+  // each block top-to-bottom — see the file-level doc comment above for
+  // why this sidesteps the RTL flex-wrap bug entirely rather than risking
+  // it again.
+  return (
+    <View style={style as any}>
+      {blocks.map((block, i) =>
+        block.type === 'fracBlock' ? (
+          <StackedFraction key={i} num={block.num} den={block.den} color={color} fontSize={fontSize} />
+        ) : (
+          renderProseBlock(block.nodes, { color, fontSize, bold, numberOfLines, blockKey: i })
+        ),
+      )}
+    </View>
+  );
+}
 
+/** Renders one prose block — plain/bold text and any non-bare math spans —
+ * as a single native <Text> tree, exactly the same shape MathText itself
+ * used to always return. Its own text-direction is decided independently
+ * from its own content, same as before; a paragraph split into several
+ * blocks by fraction spans doesn't need to "agree" on direction with its
+ * neighbors since blocks never share a line. */
+function renderProseBlock(
+  nodes: InlineNode[],
+  opts: { color: string; fontSize: number; style?: TextStyle; bold: boolean; numberOfLines?: number; blockKey?: number },
+) {
+  const rtl = isRtlNodes(nodes);
   return (
     <Text
-      numberOfLines={numberOfLines}
+      key={opts.blockKey}
+      numberOfLines={opts.numberOfLines}
       style={[
         {
-          color,
-          fontFamily: bold ? fonts.bold : fonts.regular,
-          fontSize,
-          lineHeight: fontSize * 1.6,
+          color: opts.color,
+          fontFamily: opts.bold ? fonts.bold : fonts.regular,
+          fontSize: opts.fontSize,
+          lineHeight: opts.fontSize * 1.6,
           textAlign: rtl ? 'right' : 'left',
           writingDirection: rtl ? 'rtl' : 'ltr',
         },
-        style as any,
+        opts.style as any,
       ]}
     >
-      {nodes.map((node, idx) => renderNode(node, idx, color, bold))}
+      {nodes.map((node, idx) => renderNode(node, idx, opts.color, opts.bold))}
     </Text>
   );
 }
 
-/** Detects the narrow "whole input is one bare fraction" case described in
- * MathText's own doc comment above — anything else (surrounding text, a
- * second math span, extra characters inside/outside the $...$) returns
- * null, keeping the safe plain-text fraction path for every other case. */
-function matchStandaloneFraction(text: string): { num: string; den: string } | null {
-  const segments = splitMathSegments(text.trim());
-  if (segments.length !== 1 || segments[0].type !== 'math') return null;
-  return matchBareFraction(segments[0].content);
+/** Same direction heuristic as isRtlText, applied to an already-built node
+ * list instead of raw text — used per prose block since a block's own text
+ * isn't kept around as a separate string once split into nodes. */
+function isRtlNodes(nodes: InlineNode[]): boolean {
+  const concatenated = nodes
+    .map((n) => (n.type === 'text' ? n.value : n.type === 'math' ? n.pieces.map((p) => p.text).join('') : ''))
+    .join('');
+  return isRtlText(concatenated);
 }
 
 /** True only when `content` (the inside of one $...$ span) is nothing but
  * a single top-level \frac{...}{...}/\dfrac{...}{...} — no leading/trailing
- * characters, no nested content after the closing brace. */
+ * characters, no nested content after the closing brace. Anything else
+ * (a fraction combined with other math, extra characters) returns null,
+ * keeping the safe plain-text "a/b" degrade for that case. */
 function matchBareFraction(content: string): { num: string; den: string } | null {
   const s = content.trim();
   const m = /^\\d?frac\{/.exec(s);
@@ -163,9 +207,9 @@ function matchBareFraction(content: string): { num: string; den: string } | null
 }
 
 /** A real stacked fraction — numerator, a horizontal bar, denominator —
- * built from plain <View>/<Text>. Only ever reached via the standalone-
- * fraction check above, so it never sits inside a wrapping paragraph (see
- * MathText's doc comment for why that safety property matters). */
+ * built from plain <View>/<Text>. Reached whenever a $...$ span is nothing
+ * but a bare \frac{}{} (see matchBareFraction/buildBlocks) — as its own
+ * standalone content, or as one block among others in a longer field. */
 function StackedFraction({
   num,
   den,
@@ -329,7 +373,7 @@ const LRI = '⁦';
 const PDI = '⁩';
 
 // ---------------------------------------------------------------------------
-// Building the flat list of inline nodes (text runs, math runs)
+// Building the top-to-bottom block list (prose blocks, bare-fraction blocks)
 // ---------------------------------------------------------------------------
 type MathPiece = { text: string };
 type InlineNode =
@@ -337,20 +381,42 @@ type InlineNode =
   | { type: 'math'; pieces: MathPiece[] }
   | { type: 'break'; paragraph: boolean };
 
-function buildInlineNodes(fullText: string): InlineNode[] {
-  const nodes: InlineNode[] = [];
+type ContentBlock = { type: 'prose'; nodes: InlineNode[] } | { type: 'fracBlock'; num: string; den: string };
+
+/** Splits the whole input into a stack of blocks: ordinary prose/math runs
+ * (rendered as one native <Text> tree each, via renderProseBlock) broken
+ * apart wherever a bare "$\frac{a}{b}$" span shows up (rendered as its own
+ * StackedFraction block instead). See MathText's file-level doc comment
+ * for why stacking blocks this way — rather than inlining the fraction
+ * into the surrounding line — is what keeps this safe under RTL. */
+function buildBlocks(fullText: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  let currentNodes: InlineNode[] = [];
+  const flushProse = () => {
+    if (currentNodes.length) {
+      blocks.push({ type: 'prose', nodes: currentNodes });
+      currentNodes = [];
+    }
+  };
   for (const seg of splitMathSegments(fullText)) {
     if (seg.type === 'text') {
       // The model sometimes ignores "no markdown" instructions anyway —
       // handle **bold** here rather than showing literal asterisks.
       for (const b of splitBoldSegments(seg.content)) {
-        pushRun(nodes, b.content, b.bold);
+        pushRun(currentNodes, b.content, b.bold);
       }
     } else {
-      nodes.push({ type: 'math', pieces: parseMathExpr(seg.content) });
+      const frac = matchBareFraction(seg.content);
+      if (frac) {
+        flushProse();
+        blocks.push({ type: 'fracBlock', num: frac.num, den: frac.den });
+      } else {
+        currentNodes.push({ type: 'math', pieces: parseMathExpr(seg.content) });
+      }
     }
   }
-  return nodes;
+  flushProse();
+  return blocks.length ? blocks : [{ type: 'prose', nodes: [] }];
 }
 
 function splitBoldSegments(text: string): { content: string; bold: boolean }[] {
