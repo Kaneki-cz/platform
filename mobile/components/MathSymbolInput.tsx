@@ -10,7 +10,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { MathText, isSimpleToken, toSubUnicode, toSupUnicode } from '@/components/MathText';
+import { MathText, toSubUnicode, toSupUnicode } from '@/components/MathText';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 
 /**
@@ -168,13 +168,16 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
 
   // Fraction popup — same shape as the exponent/subscript popup above (two
   // plain boxes, live preview, same InsertTarget so it works both from the
-  // main toolbar — a plain "V/R" fraction in running text needs no $...$ at
-  // all — and from inside the equation composer. The inserted text is
-  // always the same plain "num/den" a person would type themselves (with
-  // parens only when a side isn't a single simple symbol, via
-  // isSimpleToken — the exact same rule MathText.tsx's own \frac{}{}
-  // expansion uses), never LaTeX \frac syntax, so it reads correctly
-  // whether or not it ends up inside a $...$ span.
+  // main toolbar and from inside the equation composer. The inserted text
+  // is raw "\frac{num}{den}" LaTeX — MathText.tsx's own expandFracAndSqrt /
+  // matchStandaloneFraction logic decides how it renders: a real stacked
+  // horizontal bar when the whole field is nothing but this one fraction,
+  // or a safe inline "num/den" (parens added via isSimpleToken) when it
+  // sits inside a longer line — so a fraction from the main toolbar is
+  // wrapped in its own "$...$" span (it isn't naturally math markup),
+  // while one built inside the equation composer is left bare, since that
+  // whole composer field gets wrapped in a single "$...$" itself at its
+  // own confirm step.
   const [fracModal, setFracModal] = useState<{ target: InsertTarget } | null>(null);
   const [fracNum, setFracNum] = useState('');
   const [fracDen, setFracDen] = useState('');
@@ -288,13 +291,11 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
     inputRef.current?.focus();
   };
 
-  const convertFraction = (num: string, den: string): string => {
-    const numStr = isSimpleToken(num) ? num : `(${num})`;
-    const denStr = isSimpleToken(den) ? den : `(${den})`;
-    return `${numStr}/${denStr}`;
-  };
-
-  const previewFrac = fracNum.trim() && fracDen.trim() ? convertFraction(fracNum.trim(), fracDen.trim()) : '';
+  const fracReady = !!(fracNum.trim() && fracDen.trim());
+  // Bare "\frac{a}{b}" — never pre-wrapped in "$...$" here, since the two
+  // insertion sites below need it wrapped differently.
+  const fracRaw = fracReady ? `\\frac{${fracNum.trim()}}{${fracDen.trim()}}` : '';
+  const fracPreviewText = fracReady ? `$${fracRaw}$` : '';
 
   const openFracModal = (target: InsertTarget = 'main') => {
     const val = target === 'main' ? value : eqText;
@@ -316,19 +317,24 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   };
 
   const confirmFracModal = () => {
-    if (!fracModal || !previewFrac) {
+    if (!fracModal || !fracReady) {
       closeFracModal();
       return;
     }
     const target = fracModal.target;
+    // Main-field insertion needs its own "$...$" wrapper (it's a standalone
+    // math span dropped into plain prose); the equation composer's field is
+    // already all-math and gets wrapped once as a whole at its own confirm
+    // step, so a fraction built there stays bare.
+    const inserted = target === 'main' ? `$${fracRaw}$` : fracRaw;
     const val = target === 'main' ? value : eqText;
     const sel = target === 'main' ? selection : eqSelection;
     const start = Math.min(sel.start, val.length);
     const end = Math.min(Math.max(sel.end, start), val.length);
     const before = val.slice(0, start);
     const after = val.slice(end);
-    const nextText = before + previewFrac + after;
-    const nextCursor = before.length + previewFrac.length;
+    const nextText = before + inserted + after;
+    const nextCursor = before.length + inserted.length;
     if (target === 'main') {
       onChangeText(nextText);
       setSelection({ start: nextCursor, end: nextCursor });
@@ -498,8 +504,8 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>إدراج كسر</Text>
             <Text style={styles.modalHint}>
-              اكتب البسط في الخانة الأولى، والمقام في التانية — هيتحطوا في مكان المؤشر الحالي كـ"بسط/مقام"، تقدر
-              تستخدمها جوه معادلة أو في نص عادي.
+              اكتب البسط في الخانة الأولى، والمقام في التانية — هيتحطوا في مكان المؤشر الحالي كشرطة كسر حقيقية لو
+              الكسر ده لوحده في الخانة، أو "بسط/مقام" لو جوه جملة أطول، وتقدر تستخدمها جوه معادلة أو في نص عادي.
             </Text>
 
             <View style={styles.modalFieldsRow}>
@@ -530,9 +536,11 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
 
             <View style={styles.modalPreviewWrap}>
               <Text style={styles.modalPreviewLabel}>هيتحط:</Text>
-              <Text style={styles.modalPreviewText} numberOfLines={1}>
-                {previewFrac || '—'}
-              </Text>
+              {fracReady ? (
+                <MathText text={fracPreviewText} color={colors.accent} fontSize={20} style={styles.modalPreviewText} />
+              ) : (
+                <Text style={styles.modalPreviewText}>—</Text>
+              )}
             </View>
 
             <View style={styles.modalActions}>
@@ -540,9 +548,9 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
                 <Text style={styles.modalCancelText}>إلغاء</Text>
               </Pressable>
               <Pressable
-                style={[styles.modalConfirmButton, !previewFrac && styles.modalConfirmButtonDisabled]}
+                style={[styles.modalConfirmButton, !fracReady && styles.modalConfirmButtonDisabled]}
                 onPress={confirmFracModal}
-                disabled={!previewFrac}
+                disabled={!fracReady}
               >
                 <Text style={styles.modalConfirmText}>إدراج</Text>
               </Pressable>

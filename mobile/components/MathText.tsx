@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TextStyle } from 'react-native';
+import { Text, TextStyle, View } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
 
@@ -70,6 +70,19 @@ const LATIN_RE = /[A-Za-z0-9]/;
  * variables/Greek letters italic and numbers/operators upright — the same
  * convention real typeset math uses — so it reads as a distinct,
  * deliberate result rather than blending into the surrounding prose.
+ *
+ * ONE narrow exception to the "always plain inline text, never a stacked
+ * View" rule above: when the ENTIRE input is nothing but a single bare
+ * "$\frac{a}{b}$" (no surrounding text, no sibling math, nothing else at
+ * all — e.g. a free-response answer that's just one formula on its own),
+ * there is no paragraph to reflow around it, so none of the RTL
+ * flex-wrap/row-reverse breakage described above can happen. In that one
+ * case MathText returns a real stacked fraction (numerator, a horizontal
+ * bar, denominator) built from plain <View>/<Text>, via
+ * matchStandaloneFraction/StackedFraction below. Any fraction that isn't
+ * the *entire* content — one embedded mid-sentence, or sitting next to
+ * other math — still safely degrades to the old inline "a/b" notation via
+ * expandFracAndSqrt, exactly as before.
  */
 export function MathText({
   text,
@@ -94,6 +107,13 @@ export function MathText({
    * ellipsis instead of pushing the layout, same as any other <Text>. */
   numberOfLines?: number;
 }) {
+  const standaloneFrac = matchStandaloneFraction(text);
+  if (standaloneFrac) {
+    return (
+      <StackedFraction num={standaloneFrac.num} den={standaloneFrac.den} color={color} fontSize={fontSize} style={style} />
+    );
+  }
+
   const nodes = buildInlineNodes(text);
   const rtl = isRtlText(text);
 
@@ -114,6 +134,66 @@ export function MathText({
     >
       {nodes.map((node, idx) => renderNode(node, idx, color, bold))}
     </Text>
+  );
+}
+
+/** Detects the narrow "whole input is one bare fraction" case described in
+ * MathText's own doc comment above — anything else (surrounding text, a
+ * second math span, extra characters inside/outside the $...$) returns
+ * null, keeping the safe plain-text fraction path for every other case. */
+function matchStandaloneFraction(text: string): { num: string; den: string } | null {
+  const segments = splitMathSegments(text.trim());
+  if (segments.length !== 1 || segments[0].type !== 'math') return null;
+  return matchBareFraction(segments[0].content);
+}
+
+/** True only when `content` (the inside of one $...$ span) is nothing but
+ * a single top-level \frac{...}{...}/\dfrac{...}{...} — no leading/trailing
+ * characters, no nested content after the closing brace. */
+function matchBareFraction(content: string): { num: string; den: string } | null {
+  const s = content.trim();
+  const m = /^\\d?frac\{/.exec(s);
+  if (!m) return null;
+  const openIdx = m[0].length - 1;
+  const num = readBraceGroup(s, openIdx);
+  if (s[num.end] !== '{') return null;
+  const den = readBraceGroup(s, num.end);
+  if (den.end !== s.length) return null;
+  return { num: num.content, den: den.content };
+}
+
+/** A real stacked fraction — numerator, a horizontal bar, denominator —
+ * built from plain <View>/<Text>. Only ever reached via the standalone-
+ * fraction check above, so it never sits inside a wrapping paragraph (see
+ * MathText's doc comment for why that safety property matters). */
+function StackedFraction({
+  num,
+  den,
+  color,
+  fontSize,
+  style,
+}: {
+  num: string;
+  den: string;
+  color: string;
+  fontSize: number;
+  style?: TextStyle;
+}) {
+  const barColor = colors.accent;
+  const lineStyle = { color: barColor, fontFamily: MATH_FONT, fontSize, textAlign: 'center' as const };
+  return (
+    <View style={[{ alignItems: 'center', alignSelf: 'flex-start' }, style as any]}>
+      <Text style={lineStyle}>{renderPieces(parseMathExpr(num))}</Text>
+      <View
+        style={{
+          alignSelf: 'stretch',
+          height: Math.max(1, Math.round(fontSize * 0.07)),
+          backgroundColor: barColor,
+          marginVertical: Math.round(fontSize * 0.12),
+        }}
+      />
+      <Text style={lineStyle}>{renderPieces(parseMathExpr(den))}</Text>
+    </View>
   );
 }
 
