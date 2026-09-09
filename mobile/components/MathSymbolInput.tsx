@@ -256,16 +256,22 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   // Fraction popup — same shape as the exponent/subscript popup above (two
   // plain boxes, live preview, same InsertTarget so it works both from the
   // main toolbar and from inside the equation composer. The inserted text
-  // is raw "\frac{num}{den}" LaTeX — MathText.tsx's own splitFracSegments/
+  // is raw "\frac{num}{den}" LaTeX — MathText.tsx's own matchBareFraction/
   // StackedFraction logic decides how it renders: a real stacked horizontal
-  // bar whenever this exact \frac{}{} shows up in a $...$ span (whether it's
-  // the only thing there or sits next to other text), or a safe inline
-  // "num/den" (parens added via isSimpleToken) only when it ends up nested
-  // inside another fraction or a square root — so a fraction from the main
-  // toolbar is wrapped in its own "$...$" span (it isn't naturally math
-  // markup), while one built inside the equation composer is left bare,
-  // since that whole composer field gets wrapped in a single "$...$" itself
-  // at its own confirm step.
+  // bar only when this \frac{}{} is the ONLY thing in its own "$...$" span;
+  // combined with anything else in that same span (typed by hand, or
+  // produced by the backend's own AI pipeline — e.g. "$I = \frac{V}{R}$")
+  // it degrades to safe inline "num/den" text instead (parens added via
+  // isSimpleToken), same as one nested inside another fraction or a square
+  // root always has — this was tightened after a live report of exactly
+  // that combined case scrambling surrounding Arabic word order, see
+  // MathText.tsx's own file-level doc comment. A fraction inserted from
+  // this popup is unaffected either way: it's always wrapped in its OWN
+  // standalone "$...$" span with nothing else inside it (it isn't naturally
+  // math markup) when inserted from the main toolbar, while one built
+  // inside the equation composer is left bare, since that whole composer
+  // field gets wrapped in a single "$...$" itself at its own confirm step —
+  // neither path ever produces the combined shape that degrades.
   //
   // The numerator/denominator boxes can themselves take an exponent or
   // subscript — reusing the exact same exponent/subscript popup above via

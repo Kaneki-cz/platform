@@ -11,6 +11,13 @@ import { colors, fonts } from '@/constants/theme';
 // here — a real font file bundled by the app (so it's identical on iOS and
 // Android), and one purpose-built for scientific/math typesetting.
 const MATH_FONT = fonts.serifBold;
+// Math renders a couple of points larger than the surrounding prose it sits
+// in — the fraction bar, exponents and the equation itself read as a
+// distinct, slightly bigger typeset element rather than blending into body
+// text at the exact same size. Applied wherever a math run's own fontSize
+// is set (renderNode, renderFlow's math branch, StackedFraction) — never to
+// plain prose, which keeps whatever size the caller passed in.
+const MATH_SIZE_BUMP = 2;
 const LETTER_RE = /[A-Za-zΑ-Ωα-ω]/;
 // Any run of plain Latin letters/digits — a unit, a brand/proper name, a
 // number, an English word sitting inside an otherwise-Arabic sentence — so
@@ -81,40 +88,47 @@ const LATIN_RE = /[A-Za-z0-9]/;
  * below the text next to it, which avoided the bug below entirely — and
  * choosing true inline placement anyway.
  *
- * That means this file is now knowingly using the exact mechanism that
- * previously broke Arabic paragraph order: any \frac{a}{b} found inside a
- * $...$ span (see splitFracSegments) breaks its surrounding prose block
- * into word-level flow items (buildBlocks + renderFlow)
- * arranged in a flex-wrap row (flexDirection row-reverse for RTL content,
- * flexWrap: 'wrap') alongside a StackedFraction item — the same row-
- * reverse + flex-wrap combination whose confirmed failure mode is: once
- * such a row wraps onto more than one line, whole chunks of it can come
- * out in the wrong order relative to each other. It is NOT reliably safe.
- * If Arabic text next to an inline fraction reads with words/phrases out
- * of order — especially once the line is long enough to wrap — that is
- * this exact bug recurring, not a new one. The two safer designs this
- * file used before (in order of increasing safety) were: (a) same real
- * bar, but on its own line, separate from surrounding text (renderFlow
- * replaced by a plain top-to-bottom View stack — direction-agnostic, zero
- * risk); (b) every fraction as plain inline text ("V/R") via
- * expandFracAndSqrt, flowing through one single native <Text> tree same as
- * everything else (the original, fully-safe design). Reverting to either
- * is a same-file change, not a redesign, if this recurs and can't be fixed.
+ * That means this file is knowingly using the exact mechanism that
+ * previously broke Arabic paragraph order: a $...$ span that is NOTHING BUT
+ * one bare \frac{a}{b} (see matchBareFraction) breaks its surrounding prose
+ * block into word-level flow items (buildBlocks + renderFlow) arranged in a
+ * flex-wrap row (flexDirection row-reverse for RTL content, flexWrap:
+ * 'wrap') alongside a StackedFraction item — the same row-reverse +
+ * flex-wrap combination whose confirmed failure mode is: once such a row
+ * wraps onto more than one line, whole chunks of it can come out in the
+ * wrong order relative to each other. It is NOT reliably safe. If Arabic
+ * text next to an inline fraction reads with words/phrases out of order —
+ * especially once the line is long enough to wrap — that is this exact bug
+ * recurring, not a new one. The two safer designs this file used before (in
+ * order of increasing safety) were: (a) same real bar, but on its own line,
+ * separate from surrounding text (renderFlow replaced by a plain
+ * top-to-bottom View stack — direction-agnostic, zero risk); (b) every
+ * fraction as plain inline text ("V/R") via expandFracAndSqrt, flowing
+ * through one single native <Text> tree same as everything else (the
+ * original, fully-safe design). Reverting to either is a same-file change,
+ * not a redesign, if this recurs and can't be fixed.
  *
- * A fraction no longer needs to be the *entire* $...$ span to get the real
- * bar, either — "$I = \frac{V}{R}$" now renders "I = " as ordinary inline
- * math text immediately followed by a real stacked bar, not the old
- * plain-text "I = V/R" degrade. splitFracSegments() below walks each math
- * span's raw LaTeX and pulls out every top-level \frac{}{}/\dfrac{}{} it
- * finds (whatever comes before/after within the same span becomes its own
- * ordinary math node), so a fraction combined with other symbols in one
- * span still gets the bar — the only fractions that still degrade to
- * plain "a/b" text are ones nested INSIDE another fraction's numerator/
- * denominator, or inside a \sqrt{...}, since a stacked bar can't sensibly
- * nest inside another stacked bar's own <Text> line (a <Text> can't hold a
- * <View>) — those still go through the old expandFracAndSqrt path exactly
- * as before, which is also what StackedFraction itself uses to render
- * whatever ends up inside its numerator/denominator (so an exponent or
+ * UPDATE: a fraction combined with anything else in the same $...$ span —
+ * e.g. "$I = \frac{V}{R}$" — briefly also got pulled out into its own real
+ * stacked-bar block (so "I = " rendered as an ordinary math node
+ * immediately followed by a real bar), on the theory that a fraction
+ * shouldn't need to be the *entire* span to get the bar. A live report
+ * confirmed this exact row-reverse+flex-wrap mechanism actually scrambling
+ * "I = ..." relative to the surrounding Arabic sentence once real content
+ * exercised it — not a hypothetical, an observed failure. Per the user's
+ * own explicit choice at that point: a fraction combined with other content
+ * in the same span now falls back to the plain-text "I = V/R" degrade
+ * (matchBareFraction returns null, so the whole span flows through
+ * parseMathExpr/expandFracAndSqrt as one ordinary math node, same single-
+ * Text-tree-safe path as everything else) — same as a fraction nested
+ * inside another fraction's numerator/denominator, or inside a \sqrt{...},
+ * already did (a stacked bar can't sensibly nest inside another stacked
+ * bar's own <Text> line — a <Text> can't hold a <View>). Only a span that
+ * is NOTHING BUT one bare fraction still gets the real inline bar — the
+ * narrower case the user chose to keep despite carrying the same
+ * underlying risk, since it's what makes the row-reverse+flex-wrap path
+ * trigger at all. Whatever ends up inside a bar's own numerator/denominator
+ * still goes through expandFracAndSqrt exactly as before (so an exponent or
  * subscript typed into either box, e.g. "v_0^2", renders correctly there
  * too — parseMathExpr already handles that, nothing extra needed).
  */
@@ -202,7 +216,7 @@ function renderFlow(
         const bold = node.bold || opts.bold;
         splitWords(node.value).forEach((word) => {
           items.push(
-            <Text key={`t${key++}`} style={{ color: opts.color }}>
+            <Text key={`t${key++}`} style={{ color: opts.color, fontSize: opts.fontSize }}>
               {splitLatinRuns(word).map((r, j) => (
                 <Text
                   key={j}
@@ -221,7 +235,14 @@ function renderFlow(
       // formula isn't meant to wrap mid-expression anyway.
       const isBlank = !node.pieces.some((p) => p.text.trim());
       items.push(
-        <Text key={`m${key++}`} style={isBlank ? { color: opts.color } : { color: colors.accent, fontFamily: MATH_FONT }}>
+        <Text
+          key={`m${key++}`}
+          style={
+            isBlank
+              ? { color: opts.color, fontSize: opts.fontSize }
+              : { color: colors.accent, fontFamily: MATH_FONT, fontSize: opts.fontSize + MATH_SIZE_BUMP }
+          }
+        >
           {LRI}
           {renderPieces(node.pieces)}
           {PDI}
@@ -289,7 +310,7 @@ function renderProseBlock(
         opts.style as any,
       ]}
     >
-      {nodes.map((node, idx) => renderNode(node, idx, opts.color, opts.bold))}
+      {nodes.map((node, idx) => renderNode(node, idx, opts.color, opts.fontSize, opts.bold))}
     </Text>
   );
 }
@@ -305,9 +326,10 @@ function isRtlNodes(nodes: InlineNode[]): boolean {
 }
 
 /** A real stacked fraction — numerator, a horizontal bar, denominator —
- * built from plain <View>/<Text>. Reached whenever splitFracSegments finds
- * a top-level \frac{}{} inside a $...$ span (see buildBlocks) — as its own
- * standalone content, or as one block among others in a longer field. Its
+ * built from plain <View>/<Text>. Reached whenever matchBareFraction finds
+ * a $...$ span that is nothing but one top-level \frac{}{} (see
+ * buildBlocks) — as its own standalone content, or as one block among
+ * others in a longer field. Its
  * own numerator/denominator text goes through the exact same parseMathExpr
  * pipeline as any other math span, so exponents/subscripts/symbols typed
  * into either box (e.g. "v_0^2") render correctly inside the bar too. */
@@ -325,16 +347,17 @@ function StackedFraction({
   style?: TextStyle;
 }) {
   const barColor = colors.accent;
-  const lineStyle = { color: barColor, fontFamily: MATH_FONT, fontSize, textAlign: 'center' as const };
+  const barFontSize = fontSize + MATH_SIZE_BUMP;
+  const lineStyle = { color: barColor, fontFamily: MATH_FONT, fontSize: barFontSize, textAlign: 'center' as const };
   return (
     <View style={[{ alignItems: 'center', alignSelf: 'flex-start' }, style as any]}>
       <Text style={lineStyle}>{renderPieces(parseMathExpr(num))}</Text>
       <View
         style={{
           alignSelf: 'stretch',
-          height: Math.max(1, Math.round(fontSize * 0.07)),
+          height: Math.max(1, Math.round(barFontSize * 0.07)),
           backgroundColor: barColor,
-          marginVertical: Math.round(fontSize * 0.12),
+          marginVertical: Math.round(barFontSize * 0.12),
         }}
       />
       <Text style={lineStyle}>{renderPieces(parseMathExpr(den))}</Text>
@@ -347,7 +370,7 @@ function StackedFraction({
  * see MATH_FONT above; exponents/subscripts are already real Unicode
  * characters baked into the piece text by parseMathExpr, and fractions are
  * already plain "num/den" text baked in by expandFracAndSqrt). */
-function renderNode(node: InlineNode, idx: number, color: string, defaultBold = false) {
+function renderNode(node: InlineNode, idx: number, color: string, fontSize: number, defaultBold = false) {
   if (node.type === 'break') return node.paragraph ? '\n\n' : '\n';
   if (node.type === 'text') {
     const bold = node.bold || defaultBold;
@@ -363,7 +386,10 @@ function renderNode(node: InlineNode, idx: number, color: string, defaultBold = 
   }
   const isBlank = !node.pieces.some((p) => p.text.trim());
   return (
-    <Text key={idx} style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT }}>
+    <Text
+      key={idx}
+      style={isBlank ? { color } : { color: colors.accent, fontFamily: MATH_FONT, fontSize: fontSize + MATH_SIZE_BUMP }}
+    >
       {LRI}
       {renderPieces(node.pieces)}
       {PDI}
@@ -428,13 +454,25 @@ function splitItalicRuns(s: string): { text: string; italic: boolean }[] {
  * are already baked into each piece's text as real Unicode characters (or a
  * parenthetical fallback) by parseMathExpr — nothing extra to do here, which
  * is exactly the point: no position offsets, so nothing for Android's Text
- * renderer to silently drop. */
+ * renderer to silently drop.
+ *
+ * An italic run switches to fonts.serifBoldItalic — a real italic font file
+ * — rather than setting `fontStyle: 'italic'` on the upright serifBold face.
+ * An earlier version did the latter, which forced Android to *synthesize*
+ * italic by skewing the upright glyph outlines: fine for most letters, but a
+ * capital "I" (a thick vertical stroke with top/bottom serifs — the whole
+ * reason STIX Two Text was picked, see constants/theme.ts) skewed into a
+ * thin diagonal line that no longer read as an "I" at all, and looked
+ * noticeably less bold than the upright text around it. Switching to the
+ * font's own hand-designed bold italic glyphs fixes both at once — the
+ * upright branch (non-italic) still just inherits fontFamily from whatever
+ * ancestor Text set it (MATH_FONT), same as before. */
 function renderPieces(pieces: MathPiece[]) {
   const nodes: React.ReactNode[] = [];
   pieces.forEach((p, i) => {
     splitItalicRuns(p.text).forEach((r, j) => {
       nodes.push(
-        <Text key={`${i}-${j}`} style={{ fontStyle: r.italic ? 'italic' : 'normal' }}>
+        <Text key={`${i}-${j}`} style={r.italic ? { fontFamily: fonts.serifBoldItalic } : undefined}>
           {r.text}
         </Text>,
       );
@@ -486,11 +524,29 @@ type ContentBlock = { type: 'prose'; nodes: InlineNode[] } | { type: 'fracBlock'
 
 /** Splits the whole input into a stack of blocks: ordinary prose/math runs
  * (rendered as one native <Text> tree each, via renderProseBlock — or, in
- * MathText's mixed-content path, flowed word-by-word via renderFlow)
- * broken apart wherever a top-level \frac{a}{b} shows up anywhere inside a
- * $...$ span (rendered as its own StackedFraction block instead — see
- * splitFracSegments). See MathText's file-level doc comment for the
- * RTL-safety trade-offs of how these blocks actually get rendered. */
+ * MathText's mixed-content path, flowed word-by-word via renderFlow) broken
+ * apart only where a $...$ span is NOTHING BUT a single top-level
+ * \frac{a}{b}/\dfrac{a}{b} (see matchBareFraction) — that segment becomes
+ * its own StackedFraction block instead. See MathText's file-level doc
+ * comment for the RTL-safety trade-offs of how these blocks actually get
+ * rendered.
+ *
+ * A fraction combined with anything else in the same span (e.g.
+ * "$I = \frac{V}{R}$") is deliberately NOT pulled out this way — it used to
+ * be (see git history: splitFracSegments walked a span and pulled out ANY
+ * top-level \frac{}{} regardless of surrounding content), but that meant
+ * such a span always forced its containing paragraph through renderFlow's
+ * row-reverse+flex-wrap renderer even when nothing else in the message
+ * needed it, and a live report confirmed that renderer's known RTL
+ * word-order bug (see the file-level doc comment) actually reordering
+ * "I = ..." relative to the surrounding Arabic sentence. Per the user's own
+ * explicit choice after seeing that happen: a fraction combined with other
+ * content in its own span now falls back to the plain-text "I = V/R"
+ * degrade (via expandFracAndSqrt, inside parseMathExpr) — same as a
+ * fraction nested inside another fraction or a \sqrt{...} already did —
+ * while a span that's nothing BUT a bare fraction keeps rendering as a real
+ * inline stacked bar, since that narrower case is the one the user chose to
+ * keep despite carrying the same underlying risk. */
 function buildBlocks(fullText: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let currentNodes: InlineNode[] = [];
@@ -508,13 +564,12 @@ function buildBlocks(fullText: string): ContentBlock[] {
         pushRun(currentNodes, b.content, b.bold);
       }
     } else {
-      for (const part of splitFracSegments(seg.content)) {
-        if (part.type === 'frac') {
-          flushProse();
-          blocks.push({ type: 'fracBlock', num: part.num, den: part.den });
-        } else if (part.content !== '') {
-          currentNodes.push({ type: 'math', pieces: parseMathExpr(part.content) });
-        }
+      const bare = matchBareFraction(seg.content);
+      if (bare) {
+        flushProse();
+        blocks.push({ type: 'fracBlock', num: bare.num, den: bare.den });
+      } else if (seg.content.trim() !== '') {
+        currentNodes.push({ type: 'math', pieces: parseMathExpr(seg.content) });
       }
     }
   }
@@ -522,53 +577,23 @@ function buildBlocks(fullText: string): ContentBlock[] {
   return blocks.length ? blocks : [{ type: 'prose', nodes: [] }];
 }
 
-/** Walks one math span's raw LaTeX and splits it into alternating plain
- * math-text chunks and top-level \frac{}{}/\dfrac{}{} calls — e.g.
- * "I = \frac{V}{R}" becomes [{text:"I = "}, {frac: V/R}]. A \frac nested
- * inside a \sqrt{...} is deliberately NOT pulled out this way (sqrt isn't
- * part of this — its whole argument, fractions included, still goes
- * through the old expandFracAndSqrt flattening, same as always); a \frac
- * nested inside ANOTHER \frac's numerator/denominator is likewise left
- * alone here (it gets flattened later, when that outer fraction's own
- * num/den text is parsed — see StackedFraction) since a stacked bar can't
- * hold another stacked bar inside its own <Text> line. */
-function splitFracSegments(s: string): ({ type: 'text'; content: string } | { type: 'frac'; num: string; den: string })[] {
-  const out: ({ type: 'text'; content: string } | { type: 'frac'; num: string; den: string })[] = [];
-  let buf = '';
-  let i = 0;
-  const flush = () => {
-    if (buf) {
-      out.push({ type: 'text', content: buf });
-      buf = '';
-    }
-  };
-  while (i < s.length) {
-    const rest = s.slice(i);
-    const fracMatch = /^\\d?frac\{/.exec(rest);
-    const sqrtMatch = /^\\sqrt\{/.exec(rest);
-    if (fracMatch) {
-      const openIdx = i + fracMatch[0].length - 1;
-      const num = readBraceGroup(s, openIdx);
-      if (s[num.end] === '{') {
-        const den = readBraceGroup(s, num.end);
-        flush();
-        out.push({ type: 'frac', num: num.content, den: den.content });
-        i = den.end;
-        continue;
-      }
-    }
-    if (sqrtMatch) {
-      const openIdx = i + sqrtMatch[0].length - 1;
-      const inner = readBraceGroup(s, openIdx);
-      buf += `√(${expandFracAndSqrt(inner.content)})`;
-      i = inner.end;
-      continue;
-    }
-    buf += s[i];
-    i++;
-  }
-  flush();
-  return out;
+/** Recognizes a math segment that is nothing but a single top-level
+ * \frac{}{}/\dfrac{}{} — whitespace aside — the only shape that still gets
+ * pulled out into its own real stacked-bar block. Anything else in the same
+ * span (before, after, or wrapped around it) means this returns null and
+ * the whole segment instead flows through parseMathExpr/expandFracAndSqrt
+ * as ordinary plain-text math, same as a fraction nested inside another
+ * fraction or a \sqrt{...} always has. */
+function matchBareFraction(s: string): { num: string; den: string } | null {
+  const trimmed = s.trim();
+  const fracMatch = /^\\d?frac\{/.exec(trimmed);
+  if (!fracMatch) return null;
+  const openIdx = fracMatch[0].length - 1;
+  const num = readBraceGroup(trimmed, openIdx);
+  if (trimmed[num.end] !== '{') return null;
+  const den = readBraceGroup(trimmed, num.end);
+  if (den.end !== trimmed.length) return null; // something trails the closing brace — not bare
+  return { num: num.content, den: den.content };
 }
 
 function splitBoldSegments(text: string): { content: string; bold: boolean }[] {
