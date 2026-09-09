@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Verify Email Screen — Design Concepts</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#22D3EE; --primaryDark:#06B6D4; --onPrimary:#04212B;
+    --accent:#F97316; --violet:#6D5DF6; --violetDark:#4C3FCB;
+    --success:#22C55E; --danger:#F87171;
+    --text:#F1F5F9; --textMuted:#8B95A8; --textFaint:#5B6472;
+    --background:#05070C; --surface:#10182B; --surfaceAlt:#161D2E; --border:#232C42;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#0a0e18; color:var(--text);
+    font-family:'Cairo',sans-serif; padding:32px 16px 80px;
+  }
+  h1{ text-align:center; font-size:22px; margin:0 0 4px; }
+  .lede{ text-align:center; color:var(--textMuted); font-size:14px; margin:0 0 40px; }
+  .row{
+    display:flex; flex-wrap:wrap; gap:28px; justify-content:center;
+  }
+  .concept{
+    width:320px;
+  }
+  .concept-label{
+    text-align:center; font-size:13px; font-weight:700; color:var(--primary);
+    margin-bottom:10px; letter-spacing:.3px;
+  }
+  .concept-desc{
+    text-align:center; font-size:11.5px; color:var(--textMuted); margin-bottom:14px;
+    line-height:1.6; min-height:52px;
+  }
+  .phone{
+    width:320px; height:640px; background:var(--background);
+    border-radius:36px; border:8px solid #1a2033; position:relative;
+    overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,.5);
+  }
+  .notch{
+    position:absolute; top:0; left:50%; transform:translateX(-50%);
+    width:120px; height:22px; background:#1a2033; border-radius:0 0 14px 14px; z-index:5;
+  }
+  .screen{ padding:56px 22px 24px; height:100%; display:flex; flex-direction:column; }
+
+  /* ---------- shared bits ---------- */
+  .langbtn{
+    position:absolute; top:56px; left:22px; border:1px solid var(--border);
+    border-radius:999px; padding:4px 10px; font-size:10px; font-weight:700; color:var(--primary);
+  }
+  .code-input-row{ display:flex; gap:8px; justify-content:center; direction:ltr; }
+  .digit-box{
+    width:42px; height:52px; border-radius:12px; background:var(--surfaceAlt);
+    border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:700; color:var(--text);
+  }
+  .digit-box.filled{ border-color:var(--primary); color:var(--primary); }
+  .digit-box.active{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(34,211,238,.18); }
+  .btn-primary{
+    background:linear-gradient(90deg,var(--primary),var(--violet));
+    color:var(--onPrimary); text-align:center; font-weight:700; font-size:15px;
+    border-radius:999px; padding:14px; margin-top:18px;
+  }
+  .resend-row{ display:flex; justify-content:center; align-items:center; gap:6px; margin-top:20px; font-size:12.5px; }
+  .resend-muted{ color:var(--textMuted); }
+  .resend-link{ color:var(--primary); font-weight:700; }
+  .resend-disabled{ color:var(--textFaint); }
+
+  /* ---------- Concept 1: Envelope + classic OTP ---------- */
+  .c1-icon-wrap{ align-self:center; margin-bottom:18px; }
+  .c1-icon{
+    width:76px; height:76px; border-radius:50%;
+    background:linear-gradient(135deg,var(--primary),var(--violet));
+    display:flex; align-items:center; justify-content:center; font-size:32px;
+  }
+  .c1-title{ text-align:center; font-size:19px; font-weight:700; margin:0 0 6px; }
+  .c1-sub{ text-align:center; font-size:12.5px; color:var(--textMuted); margin:0 0 26px; line-height:1.6; }
+  .c1-email-chip{
+    color:var(--primary); font-weight:700; direction:ltr; display:inline-block;
+  }
+
+  /* ---------- Concept 2: Gradient hero card ---------- */
+  .c2-hero{
+    background:linear-gradient(135deg,var(--primary),var(--violet));
+    border-radius:20px; padding:22px 18px; margin-bottom:22px; position:relative; overflow:hidden;
+  }
+  .c2-hero::after{
+    content:''; position:absolute; width:140px; height:140px; border-radius:50%;
+    background:rgba(255,255,255,.12); top:-60px; left:-40px;
+  }
+  .c2-hero-icon{ font-size:30px; margin-bottom:8px; }
+  .c2-hero-title{ color:var(--onPrimary); font-size:17px; font-weight:800; margin:0 0 4px; }
+  .c2-hero-sub{ color:rgba(4,33,43,.75); font-size:11.5px; line-height:1.6; margin:0; }
+  .c2-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:18px;
+    padding:20px 16px; flex:1;
+  }
+  .c2-card-label{ font-size:12px; color:var(--textMuted); text-align:center; margin-bottom:14px; }
+  .c2-ring{
+    width:34px; height:34px; border-radius:50%; border:3px solid var(--border);
+    border-top-color:var(--primary); display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:700; color:var(--primary); transform:rotate(-90deg);
+  }
+  .c2-ring span{ transform:rotate(90deg); }
+  .c2-resend-box{
+    display:flex; align-items:center; justify-content:space-between; margin-top:20px;
+    background:var(--surfaceAlt); border-radius:14px; padding:10px 14px;
+  }
+
+  /* ---------- Concept 3: Minimal glow + step dots ---------- */
+  .c3-steps{ display:flex; justify-content:center; align-items:center; gap:8px; margin-bottom:28px; }
+  .c3-step{ display:flex; align-items:center; gap:8px; }
+  .c3-dot{
+    width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700;
+  }
+  .c3-dot.done{ background:var(--success); color:#04210F; }
+  .c3-dot.current{ background:linear-gradient(135deg,var(--primary),var(--violet)); color:var(--onPrimary); }
+  .c3-line{ width:28px; height:2px; background:var(--border); }
+  .c3-title{ text-align:center; font-size:20px; font-weight:800; margin:0 0 8px; }
+  .c3-sub{ text-align:center; font-size:12.5px; color:var(--textMuted); margin:0 0 30px; }
+  .c3-digit-box{
+    width:44px; height:56px; border-radius:14px; background:transparent;
+    border-bottom:3px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:26px; font-weight:800; color:var(--text);
+  }
+  .c3-digit-box.filled{ border-bottom-color:var(--primary); color:var(--primary); text-shadow:0 0 18px rgba(34,211,238,.55); }
+  .c3-paste-hint{
+    align-self:center; margin-top:16px; font-size:11px; color:var(--textFaint);
+    border:1px dashed var(--border); border-radius:999px; padding:6px 14px;
+  }
+
+  /* ---------- Concept 4: Card stack w/ breadcrumb ---------- */
+  .c4-crumbs{ display:flex; justify-content:center; gap:6px; font-size:11px; margin-bottom:24px; }
+  .c4-crumb{ color:var(--textFaint); }
+  .c4-crumb.active{ color:var(--primary); font-weight:700; }
+  .c4-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:22px 18px; box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .c4-mail-badge{
+    width:52px; height:52px; border-radius:16px; background:var(--surfaceAlt);
+    border:1px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:24px; margin-bottom:14px;
+  }
+  .c4-title{ font-size:18px; font-weight:700; margin:0 0 6px; }
+  .c4-sub{ font-size:12px; color:var(--textMuted); margin:0 0 20px; line-height:1.6; }
+  .c4-digit-box{
+    width:40px; height:50px; border-radius:10px; background:var(--background);
+    border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:20px; font-weight:700;
+  }
+  .c4-digit-box.active{ border-color:var(--violet); box-shadow:0 0 0 3px rgba(109,93,246,.2); }
+</style>
+</head>
+<body>
+
+<h1>تصميمات جديدة لشاشة "تأكيد الإيميل"</h1>
+<p class="lede">4 أفكار مختلفة — كل واحدة فيها نفس المحتوى (الكود، إعادة الإرسال) بشكل وتنظيم مختلف</p>
+
+<div class="row">
+
+  <!-- Concept 1 -->
+  <div class="concept">
+    <div class="concept-label">1 — الظرف + خانات كلاسيك</div>
+    <div class="concept-desc">أيقونة ظرف بگرادينت العلامة أعلى الشاشة، خانة منفصلة لكل رقم (زي كل تطبيقات الـOTP المعروفة)، الإيميل ملوّن جوه الجملة.</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="langbtn">EN</div>
+      <div class="screen">
+        <div class="c1-icon-wrap"><div class="c1-icon">✉️</div></div>
+        <div class="c1-title">تأكيد الإيميل</div>
+        <div class="c1-sub">بعتنا كود مكوّن من 6 أرقام على<br><span class="c1-email-chip">kaneki@gmail.com</span></div>
+        <div class="code-input-row">
+          <div class="digit-box filled">4</div>
+          <div class="digit-box filled">2</div>
+          <div class="digit-box active">9</div>
+          <div class="digit-box">·</div>
+          <div class="digit-box">·</div>
+          <div class="digit-box">·</div>
+        </div>
+        <div class="btn-primary">تأكيد</div>
+        <div class="resend-row">
+          <span class="resend-muted">ملقتش الكود؟</span>
+          <span class="resend-disabled">أعد الإرسال (48)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Concept 2 -->
+  <div class="concept">
+    <div class="concept-label">2 — بطاقة جراديانت + عداد دائري</div>
+    <div class="concept-desc">هيرو ملوّن بگرادينت العلامة فيه العنوان، وتحته كارت غامق فيه خانات الكود، والعداد التنازلي شكله دائرة تفريغ بدل رقم عادي.</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="langbtn">EN</div>
+      <div class="screen">
+        <div class="c2-hero">
+          <div class="c2-hero-icon">🔐</div>
+          <div class="c2-hero-title">تأكيد الحساب</div>
+          <p class="c2-hero-sub">بعتنا كود لـ kaneki@gmail.com — صالح لمدة 10 دقايق</p>
+        </div>
+        <div class="c2-card">
+          <div class="c2-card-label">اكتب الكود اللي وصلك</div>
+          <div class="code-input-row">
+            <div class="digit-box filled">7</div>
+            <div class="digit-box filled">1</div>
+            <div class="digit-box filled">0</div>
+            <div class="digit-box active">4</div>
+            <div class="digit-box">·</div>
+            <div class="digit-box">·</div>
+          </div>
+          <div class="btn-primary">تأكيد</div>
+          <div class="c2-resend-box">
+            <span class="resend-muted" style="font-size:11.5px;">إعادة الإرسال متاحة بعد</span>
+            <div class="c2-ring"><span>34</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Concept 3 -->
+  <div class="concept">
+    <div class="concept-label">3 — مينيمال بتوهج + خطوات</div>
+    <div class="concept-desc">تصميم بسيط جدًا، خانات بخط سفلي بس (بدون صندوق كامل) بتضيء بالسماوي لما تتملي، ودليل خطوات (تسجيل → تأكيد) فوق.</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="langbtn">EN</div>
+      <div class="screen">
+        <div class="c3-steps">
+          <div class="c3-step"><div class="c3-dot done">✓</div></div>
+          <div class="c3-line"></div>
+          <div class="c3-step"><div class="c3-dot current">2</div></div>
+        </div>
+        <div class="c3-title">تأكيد الإيميل</div>
+        <div class="c3-sub">بعتنا كود لـ kaneki@gmail.com</div>
+        <div class="code-input-row">
+          <div class="c3-digit-box filled">5</div>
+          <div class="c3-digit-box filled">5</div>
+          <div class="c3-digit-box filled">2</div>
+          <div class="c3-digit-box">‎</div>
+          <div class="c3-digit-box">‎</div>
+          <div class="c3-digit-box">‎</div>
+        </div>
+        <div class="c3-paste-hint">📋 هتلصق الكود؟ هيتعرف عليه تلقائي</div>
+        <div class="btn-primary">تأكيد</div>
+        <div class="resend-row">
+          <span class="resend-link">أعد الإرسال</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Concept 4 -->
+  <div class="concept">
+    <div class="concept-label">4 — بطاقة معلّقة + بريدكرَمب</div>
+    <div class="concept-desc">مسار صغير أعلى الشاشة (الحساب → التأكيد) زي أي فورم متعدد الخطوات، والمحتوى كله جوه بطاقة واحدة بارزة عن الخلفية.</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="langbtn">EN</div>
+      <div class="screen">
+        <div class="c4-crumbs">
+          <span class="c4-crumb">1. الحساب</span>
+          <span class="c4-crumb">—</span>
+          <span class="c4-crumb active">2. التأكيد</span>
+        </div>
+        <div class="c4-card">
+          <div class="c4-mail-badge">📩</div>
+          <div class="c4-title">وصلك كود التفعيل</div>
+          <p class="c4-sub">اكتب الكود المكوّن من 6 أرقام اللي بعتناه لـ<br><b style="color:var(--text)">kaneki@gmail.com</b></p>
+          <div class="code-input-row">
+            <div class="c4-digit-box">·</div>
+            <div class="c4-digit-box active">8</div>
+            <div class="c4-digit-box">·</div>
+            <div class="c4-digit-box">·</div>
+            <div class="c4-digit-box">·</div>
+            <div class="c4-digit-box">·</div>
+          </div>
+          <div class="btn-primary">تأكيد ومتابعة</div>
+        </div>
+        <div class="resend-row">
+          <span class="resend-muted">ملقتش الكود؟</span>
+          <span class="resend-link">إعادة الإرسال</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
