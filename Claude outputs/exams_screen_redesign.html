@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>معاينة تصميم شاشة الامتحانات</title>
+<style>
+  :root {
+    --bg: #05070C;
+    --surface: #10182B;
+    --surfaceAlt: #161D2E;
+    --border: #232C42;
+    --primary: #22D3EE;
+    --primaryDark: #06B6D4;
+    --onPrimary: #04212B;
+    --accent: #F97316;
+    --accentDark: #C2410C;
+    --violet: #6D5DF6;
+    --danger: #F87171;
+    --text: #F1F5F9;
+    --textMuted: #8B95A8;
+    --textFaint: #5B6472;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0A0D14;
+    color: var(--text);
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    padding: 32px 16px 60px;
+  }
+  h1.page-title {
+    text-align: center;
+    font-size: 20px;
+    color: var(--text);
+    margin: 0 0 6px;
+  }
+  p.page-sub {
+    text-align: center;
+    color: var(--textFaint);
+    font-size: 13px;
+    margin: 0 0 32px;
+  }
+  .stage {
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .col-label {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 999px;
+  }
+  .col-label.before { background: #2B1116; color: var(--danger); }
+  .col-label.after { background: rgba(34,211,238,0.14); color: var(--primary); }
+
+  .phone {
+    width: 340px;
+    height: 700px;
+    background: var(--bg);
+    border-radius: 36px;
+    border: 6px solid #1a2133;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .statusbar { height: 28px; }
+  .navbar {
+    height: 48px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  /* ---------- BEFORE (current, flat) ---------- */
+  .b-title { font-size: 17px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
+  .b-hint { font-size: 11px; color: var(--textFaint); line-height: 1.5; margin: 0 0 12px; }
+  .b-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  .b-row-main { flex: 1; }
+  .b-row-title { font-size: 14px; font-weight: 600; color: var(--text); margin: 0 0 2px; }
+  .b-row-meta { font-size: 11px; color: var(--textMuted); margin: 0; }
+  .b-link { color: var(--primary); font-size: 12px; font-weight: 600; margin-inline-end: 12px; }
+  .b-danger { color: var(--danger); font-size: 12px; font-weight: 600; }
+  .b-label { font-size: 12px; color: var(--textMuted); margin: 18px 0 8px; }
+  .b-input {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px;
+    font-size: 13px;
+    color: var(--textFaint);
+    background: var(--surfaceAlt);
+    margin-bottom: 8px;
+  }
+  .b-row2 { display: flex; gap: 8px; }
+  .b-row2 .b-input { flex: 1; }
+  .b-btn {
+    background: var(--primary);
+    color: var(--onPrimary);
+    text-align: center;
+    border-radius: 12px;
+    padding: 11px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 8px;
+  }
+
+  /* ---------- AFTER (redesigned) ---------- */
+  .a-header { margin-bottom: 16px; }
+  .a-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(249,115,22,0.14);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .a-title { font-size: 19px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
+  .a-hint { font-size: 11.5px; color: var(--textFaint); line-height: 1.6; margin: 0; }
+
+  .a-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px;
+    margin-top: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+  }
+  .a-card-top { display: flex; align-items: center; gap: 10px; }
+  .a-icon {
+    width: 40px; height: 40px;
+    border-radius: 999px;
+    background: rgba(249,115,22,0.16);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .a-card-title { font-size: 14.5px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+  .a-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .a-chip {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--surfaceAlt);
+    color: var(--textMuted);
+    border: 1px solid var(--border);
+  }
+  .a-chip.order { color: var(--primary); border-color: rgba(34,211,238,0.35); background: rgba(34,211,238,0.1); }
+  .a-chip.pass { color: #4ADE80; border-color: rgba(74,222,128,0.35); background: rgba(74,222,128,0.1); }
+  .a-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .a-action {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px;
+    border-radius: 10px;
+  }
+  .a-action.q { background: rgba(34,211,238,0.12); color: var(--primary); }
+  .a-action.del { background: rgba(248,113,113,0.1); color: var(--danger); }
+
+  .a-form-card {
+    background: var(--surfaceAlt);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px;
+    margin-top: 18px;
+  }
+  .a-form-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; color: var(--text); margin: 0 0 10px; }
+  .a-field-label { font-size: 10.5px; color: var(--textMuted); margin: 0 0 4px; font-weight: 600; }
+  .a-input {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px;
+    font-size: 13px;
+    color: var(--textFaint);
+    background: var(--surface);
+    margin-bottom: 10px;
+  }
+  .a-row2 { display: flex; gap: 10px; }
+  .a-row2 > div { flex: 1; }
+  .a-btn {
+    background: linear-gradient(135deg, var(--primary), var(--violet));
+    color: var(--onPrimary);
+    text-align: center;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 13.5px;
+    font-weight: 800;
+    margin-top: 4px;
+  }
+
+  .caption {
+    max-width: 760px;
+    margin: 36px auto 0;
+    text-align: center;
+    color: var(--textFaint);
+    font-size: 12.5px;
+    line-height: 1.8;
+  }
+  .caption b { color: var(--text); }
+</style>
+</head>
+<body>
+
+  <h1 class="page-title">معاينة: إعادة تصميم شاشة "الامتحانات"</h1>
+  <p class="page-sub">معاينة تصميم فقط — لسه مفيش أي كود اتغيّر في التطبيق</p>
+
+  <div class="stage">
+
+    <!-- BEFORE -->
+    <div class="col">
+      <div class="col-label before">قبل (الحالي)</div>
+      <div class="phone">
+        <div class="statusbar"></div>
+        <div class="navbar">الامتحانات</div>
+        <div class="screen">
+          <div class="b-title">الفيزياء – الفصل الأول — Exams</div>
+          <p class="b-hint">منفصلة عن أسئلة المحاضرات — تحتل مكان معيّن بين المحاضرات (بالـ Order) وتقفل كل اللي بعدها.</p>
+
+          <div class="b-row">
+            <div class="b-row-main">
+              <p class="b-row-title">امتحان الفصل الأول</p>
+              <p class="b-row-meta">order 10 · pass ≥75% · 12 questions</p>
+            </div>
+            <span class="b-link">Questions</span>
+            <span class="b-danger">Delete</span>
+          </div>
+          <div class="b-row">
+            <div class="b-row-main">
+              <p class="b-row-title">امتحان منتصف الترم</p>
+              <p class="b-row-meta">order 25 · pass ≥80% · 8 questions</p>
+            </div>
+            <span class="b-link">Questions</span>
+            <span class="b-danger">Delete</span>
+          </div>
+
+          <p class="b-label">Add an exam</p>
+          <div class="b-input">Exam title</div>
+          <div class="b-row2">
+            <div class="b-input">Order</div>
+            <div class="b-input">Passing %</div>
+          </div>
+          <div class="b-btn">Add Exam</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="col">
+      <div class="col-label after">بعد (المقترح)</div>
+      <div class="phone">
+        <div class="statusbar"></div>
+        <div class="navbar">الامتحانات</div>
+        <div class="screen">
+          <div class="a-header">
+            <div class="a-eyebrow">📘 الفصل الأول</div>
+            <p class="a-title">الامتحانات</p>
+            <p class="a-hint">تقفل كل محاضرة بعدها لحد ما الطالب يعدّي النسبة المطلوبة — رتّبها بين المحاضرات برقم الـ"ترتيب".</p>
+          </div>
+
+          <div class="a-card">
+            <div class="a-card-top">
+              <div class="a-icon">📝</div>
+              <div style="flex:1">
+                <p class="a-card-title">امتحان الفصل الأول</p>
+                <div class="a-chips">
+                  <span class="a-chip order">🔢 الترتيب 10</span>
+                  <span class="a-chip pass">✓ ٪75 للنجاح</span>
+                  <span class="a-chip">12 سؤال</span>
+                </div>
+              </div>
+            </div>
+            <div class="a-card-actions">
+              <div class="a-action q">📋 الأسئلة</div>
+              <div class="a-action del">🗑 حذف</div>
+            </div>
+          </div>
+
+          <div class="a-card">
+            <div class="a-card-top">
+              <div class="a-icon">📝</div>
+              <div style="flex:1">
+                <p class="a-card-title">امتحان منتصف الترم</p>
+                <div class="a-chips">
+                  <span class="a-chip order">🔢 الترتيب 25</span>
+                  <span class="a-chip pass">✓ ٪80 للنجاح</span>
+                  <span class="a-chip">8 أسئلة</span>
+                </div>
+              </div>
+            </div>
+            <div class="a-card-actions">
+              <div class="a-action q">📋 الأسئلة</div>
+              <div class="a-action del">🗑 حذف</div>
+            </div>
+          </div>
+
+          <div class="a-form-card">
+            <p class="a-form-title">➕ إضافة امتحان جديد</p>
+            <p class="a-field-label">عنوان الامتحان</p>
+            <div class="a-input">مثال: امتحان الفصل الثاني</div>
+            <div class="a-row2">
+              <div>
+                <p class="a-field-label">الترتيب بين المحاضرات</p>
+                <div class="a-input">0</div>
+              </div>
+              <div>
+                <p class="a-field-label">نسبة النجاح ٪</p>
+                <div class="a-input">75</div>
+              </div>
+            </div>
+            <div class="a-btn">＋ إضافة الامتحان</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="caption">
+    التغييرات الأساسية: كل امتحان بقى <b>كارت</b> منفصل بدل صف مسطّح، الأرقام (الترتيب / نسبة النجاح / عدد الأسئلة) بقت <b>شارات ملوّنة</b> واضحة بدل سطر رمادي صغير، وفورم الإضافة بقى في <b>كارت منفصل بعنوان واضح</b> بدل ما يكون مجرد حقول تحت بعض. الألوان والخطوط زي ما هي في باقي التطبيق (نفس الـ theme).
+  </p>
+
+</body>
+</html>

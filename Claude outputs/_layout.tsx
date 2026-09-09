@@ -1,10 +1,4 @@
 import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold, useFonts } from '@expo-google-fonts/cairo';
-import {
-  STIXTwoText_400Regular,
-  STIXTwoText_400Regular_Italic,
-  STIXTwoText_700Bold,
-  STIXTwoText_700Bold_Italic,
-} from '@expo-google-fonts/stix-two-text';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
@@ -86,19 +80,6 @@ export default function RootLayout() {
     Cairo_500Medium,
     Cairo_600SemiBold,
     Cairo_700Bold,
-    // STIX Two Text — a serif face designed for scientific/math typesetting
-    // (strong, unambiguous serifs — the capital I reads with clear top/
-    // bottom bars, not a bare stroke) used for any English/Latin run (see
-    // constants/theme.ts's fonts.serif/serifBold and MathText.tsx's
-    // splitLatinRuns). The two _Italic variants are real italic font files
-    // (not RN's synthetic fontStyle:'italic' skew, which mangled bold
-    // glyphs like a capital "I" — see constants/theme.ts's
-    // serifItalic/serifBoldItalic comment) used for math variables/Greek
-    // letters, per textbook convention.
-    STIXTwoText_400Regular,
-    STIXTwoText_400Regular_Italic,
-    STIXTwoText_700Bold,
-    STIXTwoText_700Bold_Italic,
   });
 
   useEffect(() => {

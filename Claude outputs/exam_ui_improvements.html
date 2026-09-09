@@ -1,0 +1,472 @@
+<title>Exam Authoring Redesign</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+
+:root{
+  --bg:#05070C; --surface:#10182B; --surfaceAlt:#161D2E; --border:#232C42;
+  --primary:#22D3EE; --primaryDark:#06B6D4; --onPrimary:#04212B;
+  --accent:#F97316; --accentDark:#C2410C;
+  --violet:#6D5DF6; --violetDark:#4C3FCB;
+  --success:#22C55E; --danger:#F87171;
+  --text:#F1F5F9; --textMuted:#8B95A8; --textFaint:#5B6472;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Cairo',sans-serif;margin:0;padding:28px 16px 60px;direction:rtl}
+h1{font-size:20px;font-weight:700;margin:0 0 6px;color:var(--text)}
+h2{font-size:15px;font-weight:700;margin:0 0 4px;color:var(--text)}
+.lede{color:var(--textMuted);font-size:13px;line-height:1.9;max-width:760px;margin:0 auto 36px}
+.wrap{max-width:1180px;margin:0 auto}
+.serif{font-family:'STIX Two Text',serif}
+
+/* ---------- section shells ---------- */
+.section{margin-bottom:56px}
+.section-head{margin-bottom:16px;max-width:760px}
+.section-head p{color:var(--textMuted);font-size:13px;line-height:1.9;margin:4px 0 0}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;margin-inline-end:8px}
+.badge.old{background:rgba(139,149,168,.15);color:var(--textMuted)}
+.badge.new{background:rgba(34,211,238,.15);color:var(--primary)}
+
+/* ---------- icon compare grid ---------- */
+.icon-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media (max-width:900px){.icon-grid{grid-template-columns:repeat(2,1fr)}}
+.icon-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;text-align:center}
+.icon-card .name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px}
+.compare-row{display:flex;align-items:center;justify-content:center;gap:14px}
+.arrow{color:var(--textFaint);font-size:18px}
+.chip{width:76px;height:76px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border)}
+.chip.old-style{background:var(--surfaceAlt)}
+.chip-glyph{font-size:22px;line-height:1}
+.chip-label{font-size:9.5px;color:var(--textMuted);font-family:'Cairo',sans-serif}
+.chip.new-style{position:relative;overflow:hidden}
+.chip.new-style::before{content:'';position:absolute;inset:0;opacity:.10}
+.chip .icon-svg{width:26px;height:26px}
+
+/* ---------- phone-ish frame ---------- */
+.phone{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:18px;max-width:420px}
+.phone-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px}
+.phone-sub{font-size:11px;color:var(--textMuted);margin-bottom:14px}
+.two-up{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+@media (max-width:820px){.two-up{grid-template-columns:1fr}}
+
+/* ---------- action row (old) ---------- */
+.actions-row{display:flex;gap:8px;margin-bottom:10px}
+.action-btn-old{flex:1;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:12px;padding:10px 4px;text-align:center}
+.action-btn-old .glyph{font-size:17px;color:var(--primary);font-family:'STIX Two Text',serif}
+.action-btn-old .label{font-size:9.5px;color:var(--textMuted);margin-top:4px}
+
+/* ---------- action row (new) ---------- */
+.action-btn-new{flex:1;border-radius:12px;padding:10px 4px;text-align:center;border:1px solid var(--border);background:var(--surfaceAlt);position:relative}
+.action-btn-new .tint{position:absolute;inset:0;border-radius:12px;opacity:.14}
+.action-btn-new .inner{position:relative}
+.action-btn-new .glyph{font-size:18px;font-family:'STIX Two Text',serif}
+.action-btn-new .label{font-size:9.5px;color:var(--textMuted);margin-top:4px;font-weight:600}
+.action-btn-new.math .tint{background:var(--primary)}
+.action-btn-new.math .glyph{color:var(--primary)}
+.action-btn-new.frac .tint{background:var(--accent)}
+.action-btn-new.exp .tint{background:var(--violet)}
+.action-btn-new.exp .glyph{color:var(--violet)}
+.action-btn-new.sub .tint{background:#34D399}
+.action-btn-new.sub .glyph{color:#34D399}
+
+.mini-frac{display:inline-flex;flex-direction:column;align-items:center;line-height:1;color:var(--accent)}
+.mini-frac .bar{width:16px;height:1.6px;background:var(--accent);margin:2px 0}
+.mini-frac span{font-size:13px}
+
+.sup-ico,.sub-ico{font-family:'STIX Two Text',serif}
+.sup-ico b{font-size:18px}
+.sup-ico i{font-size:11px;vertical-align:super;margin-inline-start:1px}
+.sub-ico b{font-size:18px}
+.sub-ico i{font-size:11px;vertical-align:sub;margin-inline-start:1px}
+
+/* ---------- symbol chips row ---------- */
+.symbols-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.sym-chip{width:30px;height:30px;border-radius:8px;background:var(--surfaceAlt);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'STIX Two Text',serif;color:var(--text);font-size:13px}
+.sym-divider{width:1px;background:var(--border);margin:2px 4px}
+
+/* ---------- prompt field ---------- */
+.field-label{font-size:11px;color:var(--textMuted);margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.textbox{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--text);min-height:52px;margin-bottom:10px}
+.preview-box{border:1px dashed var(--border);border-radius:12px;padding:10px 12px;margin-bottom:18px}
+.preview-label{font-size:10.5px;color:var(--textFaint);margin-bottom:4px}
+.preview-content{font-family:'STIX Two Text',serif;color:var(--text);font-size:14px}
+.preview-content .frac-num,.preview-content .frac-den{display:block;text-align:center;color:var(--accent)}
+.preview-content .frac-bar{display:block;height:1.5px;background:var(--accent);margin:2px 0}
+.frac-stack{display:inline-flex;flex-direction:column;vertical-align:middle;margin:0 3px}
+
+/* ---------- choices before/after ---------- */
+.choice-block{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:10px;background:var(--surface)}
+.choice-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.choice-letter{width:24px;height:24px;border-radius:999px;background:rgba(34,197,94,.15);color:var(--success);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.choice-input{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--textMuted)}
+.repeat-fade{opacity:.55}
+.repeat-fade2{opacity:.3}
+
+.floating-toolbar{position:sticky;bottom:0;background:var(--surface);border:1px solid var(--primary);border-radius:14px;padding:8px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 -6px 18px rgba(0,0,0,.35);margin-top:12px}
+.floating-toolbar .tag{font-size:10px;color:var(--primary);font-weight:700;white-space:nowrap}
+.floating-toolbar .mini-btn{width:30px;height:30px;border-radius:8px;background:var(--surfaceAlt);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'STIX Two Text',serif;color:var(--text);font-size:13px}
+
+.callout{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.25);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--textMuted);line-height:1.9;margin-top:14px}
+.callout b{color:var(--text)}
+
+/* ---------- extra improvements ---------- */
+.quick-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.quick-row .tag{font-size:10px;color:var(--textFaint);white-space:nowrap;margin-inline-end:2px}
+.sym-chip.quick{background:rgba(34,211,238,.10);border-color:rgba(34,211,238,.4);color:var(--primary)}
+
+.field-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.undo-btn{display:flex;align-items:center;gap:4px;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11px;color:var(--textMuted);cursor:pointer;transition:transform .08s ease}
+.undo-btn:active{transform:scale(.93);background:var(--surface)}
+.undo-btn .arrow{font-size:13px;color:var(--primary)}
+
+.q-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.q-card .qbadge{width:34px;height:34px;border-radius:10px;background:rgba(109,93,246,.14);display:flex;align-items:center;justify-content:center;font-size:16px}
+.q-card .qbody{flex:1}
+.q-card .qtitle{font-size:12.5px;color:var(--text);font-family:'STIX Two Text',serif}
+.q-card .qtype{display:inline-block;margin-top:4px;font-size:10px;color:var(--textMuted);background:var(--surfaceAlt);border-radius:999px;padding:2px 8px}
+.q-card .qactions{display:flex;gap:6px}
+.icon-btn{width:32px;height:32px;border-radius:9px;background:var(--surfaceAlt);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:transform .08s ease}
+.icon-btn:active{transform:scale(.88)}
+.icon-btn.danger{color:var(--danger)}
+.icon-btn.dup{color:var(--primary)}
+
+.demo-field{border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--text);background:var(--surfaceAlt);transition:border-color .12s ease,box-shadow .12s ease;margin-bottom:6px}
+.demo-field.focused{border-color:var(--primary);box-shadow:0 0 0 3px rgba(34,211,238,.15)}
+.demo-caption{font-size:10.5px;color:var(--textFaint)}
+
+.press-demo{display:flex;gap:10px;flex-wrap:wrap}
+.press-chip{width:64px;height:64px;border-radius:14px;background:var(--surfaceAlt);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:transform .1s cubic-bezier(.34,1.56,.64,1),background .1s ease;-webkit-tap-highlight-color:transparent}
+.press-chip:active{transform:scale(.88);background:var(--surface);border-color:var(--primary)}
+.press-chip .g{font-family:'STIX Two Text',serif;font-size:19px;color:var(--primary)}
+.press-chip .l{font-size:9px;color:var(--textMuted)}
+</style>
+
+<div class="wrap">
+  <h1>تحسينات واجهة كتابة الامتحانات</h1>
+  <p class="lede">
+    مقترح شكلي — مش كود شغال — عشان تشوف الاتجاه وتختار قبل ما ننفذه فعليًا. المقارنات كلها بنفس ألوان
+    التطبيق الحالية (السطح الغامق، السيان، البرتقالي) وبنفس خط STIX Two Text للرياضيات وCairo للعربي.
+  </p>
+
+  <div class="section">
+    <div class="section-head">
+      <h2><span class="badge old">قبل</span><span class="badge new">بعد</span> الأيقونات الأربعة</h2>
+      <p>
+        دلوقتي الأربع أزرار (رياضيات / كسر / أس / دليل سفلي) شكلهم متطابق تقريبًا — نفس اللون، نفس وزن الخط —
+        فبياخد نص ثانية تفرّق بينهم بالعين. التصميم الجديد بيدي كل واحد لون مميز من نفس ألوان التطبيق، وبيبقى
+        الشكل نفسه يشرح الوظيفة (الكسر بقى شرطة حقيقية صغيرة، مش نص "a⁄b").
+      </p>
+    </div>
+    <div class="icon-grid">
+
+      <div class="icon-card">
+        <div class="name">رياضيات</div>
+        <div class="compare-row">
+          <div class="chip old-style">
+            <div class="chip-glyph serif" style="color:var(--primary)">$…$</div>
+            <div class="chip-label">رياضيات</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="chip new-style">
+            <div class="tint" style="background:var(--primary)"></div>
+            <div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div class="chip-glyph serif" style="color:var(--primary);font-style:italic;font-size:24px">π</div>
+              <div class="chip-label">رياضيات</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="icon-card">
+        <div class="name">كسر</div>
+        <div class="compare-row">
+          <div class="chip old-style">
+            <div class="chip-glyph serif" style="color:var(--primary)">a⁄b</div>
+            <div class="chip-label">كسر</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="chip new-style">
+            <div class="tint" style="background:var(--accent)"></div>
+            <div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div class="mini-frac serif"><span>a</span><span class="bar"></span><span>b</span></div>
+              <div class="chip-label">كسر</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="icon-card">
+        <div class="name">أُس</div>
+        <div class="compare-row">
+          <div class="chip old-style">
+            <div class="chip-glyph serif" style="color:var(--primary)">aⁿ</div>
+            <div class="chip-label">أُس</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="chip new-style">
+            <div class="tint" style="background:var(--violet)"></div>
+            <div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div class="sup-ico" style="color:var(--violet)"><b>x</b><i>2</i></div>
+              <div class="chip-label">أُس</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="icon-card">
+        <div class="name">دليل سفلي</div>
+        <div class="compare-row">
+          <div class="chip old-style">
+            <div class="chip-glyph serif" style="color:var(--primary)">aₙ</div>
+            <div class="chip-label">دليل سفلي</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="chip new-style">
+            <div class="tint" style="background:#34D399"></div>
+            <div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div class="sub-ico" style="color:#34D399"><b>x</b><i>2</i></div>
+              <div class="chip-label">دليل سفلي</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="callout">
+      <b>ملاحظة تقنية:</b> "أُس"/"دليل سفلي" الجديدين ممكن يتنفذوا بأيقونات <code>@expo/vector-icons</code>
+      الجاهزة أصلًا في المشروع (FontAwesome5: <code>superscript</code>/<code>subscript</code>) بدل رسم النص
+      مرفوع/منزّل يدويًا — ده فعليًا بيتفادى نفس مشكلة الـ Android القديمة اللي كانت بتمنع إزاحة موضع النص
+      (موثقة في تعليق MathText.tsx). أيقونة "رياضيات" و"كسر" هتفضلوا نص عادي بخط STIX نفسه، متسقين مع فلسفة
+      التطبيق: رياضيات حقيقية، مش أيقونات تقريبية.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>شكل صف الأزرار وهو شغال جوه الفورم</h2>
+      <p>نفس البيانات، نفس الحقل، بس بالتصميم الجديد — كل زرار لونه بيدل عليه من بعيد.</p>
+    </div>
+    <div class="phone" style="max-width:460px">
+      <div class="phone-title">Question prompt</div>
+      <div class="phone-sub">السؤال الأول — Multiple choice</div>
+
+      <div class="actions-row">
+        <div class="action-btn-new math">
+          <div class="tint"></div>
+          <div class="inner">
+            <div class="glyph" style="font-style:italic">π</div>
+            <div class="label">رياضيات</div>
+          </div>
+        </div>
+        <div class="action-btn-new frac">
+          <div class="tint"></div>
+          <div class="inner">
+            <div class="mini-frac" style="color:var(--accent)"><span>a</span><span class="bar" style="background:var(--accent)"></span><span>b</span></div>
+            <div class="label">كسر</div>
+          </div>
+        </div>
+        <div class="action-btn-new exp">
+          <div class="tint"></div>
+          <div class="inner">
+            <div class="sup-ico"><b>x</b><i>n</i></div>
+            <div class="label">أُس</div>
+          </div>
+        </div>
+        <div class="action-btn-new sub">
+          <div class="tint"></div>
+          <div class="inner">
+            <div class="sub-ico"><b>x</b><i>n</i></div>
+            <div class="label">دليل سفلي</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="symbols-row">
+        <div class="sym-chip">√</div>
+        <div class="sym-divider"></div>
+        <div class="sym-chip">π</div><div class="sym-chip">θ</div><div class="sym-chip">α</div><div class="sym-chip">β</div><div class="sym-chip">Δ</div><div class="sym-chip">Ω</div><div class="sym-chip">μ</div>
+        <div class="sym-divider"></div>
+        <div class="sym-chip">×</div><div class="sym-chip">÷</div><div class="sym-chip">±</div><div class="sym-chip">°</div>
+      </div>
+
+      <div class="field-label">6.28X10¹²</div>
+      <div class="textbox">Shdjf$\frac{V}{R}$</div>
+
+      <div class="preview-box">
+        <div class="preview-label">👁 معاينة الشكل النهائي</div>
+        <div class="preview-content">Shdjf <span class="frac-stack"><span class="frac-num">V</span><span class="frac-bar"></span><span class="frac-den">R</span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>الاختيارات (A/B/C/D) — تكرار الأدوات تحت كل اختيار</h2>
+      <p>
+        دلوقتي كل اختيار (A، B، C...) عنده نسخته الكاملة من صف الأزرار + صف الرموز — يعني الفورم بيبقى طويل جدًا
+        لما يبقى فيه 4 اختيارات. المقترح: شريط أدوات واحد "عايم" تحت لوحة المفاتيح، بيشتغل على أي اختيار انت
+        داخل تكتب فيه دلوقتي — بدل ما يتكرر شكله 4 مرات.
+      </p>
+    </div>
+    <div class="two-up">
+      <div class="phone">
+        <div class="phone-title"><span class="badge old">قبل</span>كل اختيار وأدواته الكاملة</div>
+        <div class="choice-block">
+          <div class="choice-head"><div class="choice-letter">A</div><div class="choice-input" style="flex:1">Choice A</div></div>
+          <div class="actions-row" style="transform:scale(.9);transform-origin:right center">
+            <div class="action-btn-old"><div class="glyph">$…$</div></div>
+            <div class="action-btn-old"><div class="glyph">a⁄b</div></div>
+            <div class="action-btn-old"><div class="glyph">aⁿ</div></div>
+            <div class="action-btn-old"><div class="glyph">aₙ</div></div>
+          </div>
+          <div class="symbols-row" style="transform:scale(.9);transform-origin:right center">
+            <div class="sym-chip">√</div><div class="sym-chip">π</div><div class="sym-chip">θ</div><div class="sym-chip">α</div><div class="sym-chip">β</div>
+          </div>
+        </div>
+        <div class="choice-block repeat-fade">
+          <div class="choice-head"><div class="choice-letter" style="background:rgba(139,149,168,.15);color:var(--textMuted)">B</div><div class="choice-input" style="flex:1">Choice B</div></div>
+          <div class="actions-row" style="transform:scale(.9);transform-origin:right center">
+            <div class="action-btn-old"><div class="glyph">$…$</div></div>
+            <div class="action-btn-old"><div class="glyph">a⁄b</div></div>
+            <div class="action-btn-old"><div class="glyph">aⁿ</div></div>
+            <div class="action-btn-old"><div class="glyph">aₙ</div></div>
+          </div>
+          <div class="symbols-row" style="transform:scale(.9);transform-origin:right center">
+            <div class="sym-chip">√</div><div class="sym-chip">π</div><div class="sym-chip">θ</div><div class="sym-chip">α</div><div class="sym-chip">β</div>
+          </div>
+        </div>
+        <div class="choice-block repeat-fade2">
+          <div class="choice-head"><div class="choice-letter" style="background:rgba(139,149,168,.15);color:var(--textMuted)">C</div><div class="choice-input" style="flex:1">Choice C</div></div>
+          <div class="actions-row" style="transform:scale(.9);transform-origin:right center">
+            <div class="action-btn-old"><div class="glyph">$…$</div></div>
+            <div class="action-btn-old"><div class="glyph">a⁄b</div></div>
+            <div class="action-btn-old"><div class="glyph">aⁿ</div></div>
+            <div class="action-btn-old"><div class="glyph">aₙ</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="phone-title"><span class="badge new">بعد</span>شريط أدوات عايم واحد لكل الاختيارات</div>
+        <div class="choice-block">
+          <div class="choice-head"><div class="choice-letter">A</div><div class="choice-input" style="flex:1;border-color:var(--primary)">Choice A ▏</div></div>
+        </div>
+        <div class="choice-block">
+          <div class="choice-head"><div class="choice-letter" style="background:rgba(139,149,168,.15);color:var(--textMuted)">B</div><div class="choice-input" style="flex:1">Choice B</div></div>
+        </div>
+        <div class="choice-block">
+          <div class="choice-head"><div class="choice-letter" style="background:rgba(139,149,168,.15);color:var(--textMuted)">C</div><div class="choice-input" style="flex:1">Choice C</div></div>
+        </div>
+        <div class="choice-block">
+          <div class="choice-head"><div class="choice-letter" style="background:rgba(139,149,168,.15);color:var(--textMuted)">D</div><div class="choice-input" style="flex:1">Choice D</div></div>
+        </div>
+
+        <div class="floating-toolbar">
+          <div class="tag">بتكتب في: A</div>
+          <div class="mini-btn" style="color:var(--primary);font-style:italic">π</div>
+          <div class="mini-btn" style="color:var(--accent)">a⁄b</div>
+          <div class="mini-btn" style="color:var(--violet)">xⁿ</div>
+          <div class="mini-btn" style="color:#34D399">xₙ</div>
+          <div class="mini-btn">√</div>
+          <div class="mini-btn">π</div>
+          <div class="mini-btn">±</div>
+        </div>
+      </div>
+    </div>
+    <div class="callout">
+      <b>الفايدة:</b> بدل 4 نسخ متكررة من نفس الصفين (أزرار + رموز) — يعني ممكن توفر أكتر من نص طول الفورم
+      لما يبقى فيه 4 اختيارات — بيبقى في شريط واحد بس، بيلزق فوق الكيبورد، وبيعرف انت داخل تكتب في أنهي اختيار
+      من غير ما تدور عليه.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>خمس إضافات جديدة</h2>
+      <p>دي اللي اتكلمنا عليها دلوقتي — كل واحدة منها تقدر تتفعّل لوحدها من غير ما تعتمد على التانية.</p>
+    </div>
+
+    <div class="two-up">
+      <div class="phone">
+        <div class="phone-title">١. رموز "الأكتر استخدامًا"</div>
+        <div class="phone-sub">صف صغير فوق صف الرموز الكامل، بلون مختلف عشان يبان إنه اختصار</div>
+        <div class="quick-row">
+          <span class="tag">مقترحاتك:</span>
+          <div class="sym-chip quick">θ</div><div class="sym-chip quick">π</div><div class="sym-chip quick">Ω</div><div class="sym-chip quick">Δ</div>
+        </div>
+        <div class="symbols-row">
+          <div class="sym-chip">√</div>
+          <div class="sym-divider"></div>
+          <div class="sym-chip">π</div><div class="sym-chip">θ</div><div class="sym-chip">α</div><div class="sym-chip">β</div><div class="sym-chip">Δ</div><div class="sym-chip">Ω</div><div class="sym-chip">μ</div>
+          <div class="sym-divider"></div>
+          <div class="sym-chip">×</div><div class="sym-chip">÷</div><div class="sym-chip">±</div><div class="sym-chip">°</div>
+        </div>
+        <div class="demo-caption">الصف ده بيتبني تلقائي من الرموز اللي بتستخدمها فعلًا أكتر في الأسئلة السابقة.</div>
+      </div>
+
+      <div class="phone">
+        <div class="phone-title">٢. زرار تراجع</div>
+        <div class="phone-sub">جنب اسم الحقل مباشرة</div>
+        <div class="field-label-row">
+          <span class="field-label" style="margin:0">Question prompt</span>
+          <div class="undo-btn"><span class="arrow">↺</span> تراجع</div>
+        </div>
+        <div class="textbox">Shdjf$\frac{V}{R}$</div>
+        <div class="demo-caption">بيرجع آخر إدخال بس (كسر، أس، رمز...) — مش الحقل كله لآخر مرة اتفتح فيها.</div>
+      </div>
+    </div>
+
+    <div class="two-up" style="margin-top:20px">
+      <div class="phone">
+        <div class="phone-title">٣. تكرار السؤال</div>
+        <div class="phone-sub">زرار جديد جنب سلة المهملات في كارت السؤال</div>
+        <div class="q-card">
+          <div class="qbadge">🔘</div>
+          <div class="qbody">
+            <div class="qtitle">1. 6.28X10¹²</div>
+            <div class="qtype">Multiple choice</div>
+          </div>
+          <div class="qactions">
+            <div class="icon-btn dup">⧉</div>
+            <div class="icon-btn danger">🗑</div>
+          </div>
+        </div>
+        <div class="demo-caption">بينسخ السؤال والاختيارات كلها كسؤال جديد تحته، تعدّل بس اللي محتاج يتغير.</div>
+      </div>
+
+      <div class="phone">
+        <div class="phone-title">٤. تلوين الحقل شغّال عليه دلوقتي</div>
+        <div class="phone-sub">نفس فكرة الاختيارات، بس على السؤال الرئيسي والمعاينة كمان</div>
+        <div class="field-label">Question prompt</div>
+        <div class="demo-field focused">Shdjf$\frac{V}{R}$</div>
+        <div class="demo-caption" style="margin-bottom:10px">↑ الحقل ده عليه التركيز دلوقتي — حدوده بتضيء بالسيان</div>
+        <div class="field-label">Choice B</div>
+        <div class="demo-field">Choice B</div>
+        <div class="demo-caption">↑ ده مش عليه تركيز — شكله عادي</div>
+      </div>
+    </div>
+
+    <div class="section-head" style="margin-top:20px">
+      <h2>٥. حركة بسيطة عند الضغط</h2>
+      <p>دوس على أي زرار من دول بالماوس أو بإصبعك — ده حرفيًا نفس الإحساس اللي هيبقى في التطبيق.</p>
+    </div>
+    <div class="press-demo">
+      <div class="press-chip"><div class="g" style="font-style:italic">π</div><div class="l">رياضيات</div></div>
+      <div class="press-chip"><div class="mini-frac serif" style="color:var(--accent)"><span>a</span><span class="bar" style="background:var(--accent)"></span><span>b</span></div><div class="l">كسر</div></div>
+      <div class="press-chip"><div class="sup-ico" style="color:var(--violet)"><b>x</b><i>n</i></div><div class="l">أُس</div></div>
+      <div class="press-chip"><div class="sub-ico" style="color:#34D399"><b>x</b><i>n</i></div><div class="l">دليل سفلي</div></div>
+    </div>
+  </div>
+
+  <div class="callout" style="max-width:900px;margin:0 auto">
+    <b>خلاصة المقترحات كلها:</b><br>
+    ١. كل زرار من الأربعة ياخد لون مميز من نفس بالتة الألوان الحالية (سيان/برتقالي/بنفسجي/أخضر) عشان يتفرقوا بالعين من غير قراءة.<br>
+    ٢. أيقونة الكسر تبقى معاينة حقيقية مصغّرة لشرطة الكسر نفسها، مش نص "a⁄b".<br>
+    ٣. أيقونتي الأُس والدليل السفلي تتنفذ بأيقونات FontAwesome5 الجاهزة في المشروع بدل نص مرفوع يدويًا.<br>
+    ٤. شريط أدوات واحد عايم للاختيارات بدل تكرار الصف الكامل تحت كل اختيار — أكبر تحسين فعلي على طول الفورم.<br>
+    ٥. صف رموز "الأكتر استخدامًا" فوق صف الرموز الكامل.<br>
+    ٦. زرار تراجع لآخر إدخال جنب كل حقل.<br>
+    ٧. زرار "تكرار السؤال" في كارت السؤال.<br>
+    ٨. تلوين حدود أي حقل عليه التركيز حاليًا — مش بس في الاختيارات.<br>
+    ٩. حركة scale خفيفة عند الضغط على أي زرار أو رمز.
+  </div>
+</div>

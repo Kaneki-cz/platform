@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>معاينة تصميم شاشة كتابة الأسئلة</title>
+<style>
+  :root {
+    --bg: #05070C;
+    --surface: #10182B;
+    --surfaceAlt: #161D2E;
+    --border: #232C42;
+    --primary: #22D3EE;
+    --onPrimary: #04212B;
+    --accent: #F97316;
+    --violet: #6D5DF6;
+    --danger: #F87171;
+    --success: #4ADE80;
+    --text: #F1F5F9;
+    --textMuted: #8B95A8;
+    --textFaint: #5B6472;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0A0D14;
+    color: var(--text);
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    padding: 32px 16px 60px;
+  }
+  h1.page-title { text-align: center; font-size: 20px; margin: 0 0 6px; }
+  p.page-sub { text-align: center; color: var(--textFaint); font-size: 13px; margin: 0 0 32px; }
+  .stage { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .col-label { font-size: 13px; font-weight: 700; padding: 4px 14px; border-radius: 999px; }
+  .col-label.before { background: #2B1116; color: var(--danger); }
+  .col-label.after { background: rgba(34,211,238,0.14); color: var(--primary); }
+
+  .phone {
+    width: 350px;
+    height: 760px;
+    background: var(--bg);
+    border-radius: 36px;
+    border: 6px solid #1a2133;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .statusbar { height: 24px; }
+  .navbar {
+    height: 46px;
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .screen { flex: 1; overflow-y: auto; padding: 14px; }
+  .scroll-hint {
+    text-align: center; font-size: 10px; color: var(--textFaint);
+    padding: 4px 0 2px;
+  }
+
+  /* ---------- shared plain bits (BEFORE) ---------- */
+  .b-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .b-hint { font-size: 10.5px; color: var(--textFaint); line-height: 1.5; margin: 0 0 10px; }
+  .b-row {
+    display: flex; align-items: center; padding: 9px 2px;
+    border-bottom: 1px solid var(--border); gap: 8px;
+  }
+  .b-row-title { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
+  .b-row-meta { font-size: 10.5px; color: var(--textMuted); margin: 0; }
+  .b-danger { color: var(--danger); font-size: 11.5px; font-weight: 600; }
+  .b-label { font-size: 12px; color: var(--textMuted); margin: 14px 0 8px; }
+  .b-toggle { display: flex; gap: 8px; margin-bottom: 8px; }
+  .b-toggle div {
+    flex: 1; text-align: center; font-size: 11.5px; font-weight: 600;
+    padding: 8px; border: 1px solid var(--border); border-radius: 12px; color: var(--textMuted);
+  }
+  .b-toggle .active { border-color: var(--primary); color: var(--primary); background: rgba(34,211,238,0.08); }
+  .b-toolbar-mini { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+  .b-toolbar-mini span {
+    font-size: 10px; border: 1px solid var(--border); border-radius: 6px;
+    padding: 3px 6px; color: var(--textMuted); background: var(--surfaceAlt);
+  }
+  .b-input {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+    font-size: 12px; color: var(--textFaint); background: var(--surfaceAlt); margin-bottom: 8px;
+  }
+  .b-choice-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .b-choice-key {
+    width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--textMuted);
+    flex-shrink: 0;
+  }
+  .b-choice-row .b-input { flex: 1; margin-bottom: 0; }
+  .b-img-btn {
+    border: 1px solid var(--border); border-radius: 10px; padding: 9px; text-align: center;
+    font-size: 11.5px; color: var(--primary); margin-bottom: 10px;
+  }
+  .b-actions { display: flex; gap: 8px; }
+  .b-actions .cancel { flex: 1; border: 1px solid var(--border); border-radius: 10px; text-align: center; padding: 10px; font-size: 12px; color: var(--textMuted); }
+  .b-actions .save { flex: 1; background: var(--primary); color: var(--onPrimary); border-radius: 10px; text-align: center; padding: 10px; font-size: 12px; font-weight: 700; }
+
+  /* ---------- AFTER ---------- */
+  .a-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(249,115,22,0.14); color: var(--accent);
+    font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; margin-bottom: 7px;
+  }
+  .a-title { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+  .a-hint { font-size: 11px; color: var(--textFaint); line-height: 1.6; margin: 0 0 14px; }
+
+  .q-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-start;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+  }
+  .q-badge {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+    background: rgba(109,93,246,0.16); color: var(--violet);
+  }
+  .q-badge.text { background: rgba(34,211,238,0.14); color: var(--primary); }
+  .q-body { flex: 1; min-width: 0; }
+  .q-prompt { font-size: 12.5px; color: var(--text); margin: 0 0 6px; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .q-chip { font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    background: var(--surfaceAlt); color: var(--textMuted); border: 1px solid var(--border); }
+  .q-actions { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .q-icon-btn {
+    width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; background: var(--surfaceAlt); color: var(--danger);
+  }
+
+  .form-card {
+    background: var(--surfaceAlt); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px; margin-top: 14px;
+  }
+  .edit-banner {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.35);
+    color: var(--accent); font-size: 11.5px; font-weight: 700;
+    border-radius: 10px; padding: 8px 10px; margin-bottom: 12px;
+  }
+  .section { margin-bottom: 14px; }
+  .section:last-child { margin-bottom: 0; }
+  .section-label {
+    font-size: 11px; font-weight: 700; color: var(--textMuted); margin: 0 0 7px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .type-toggle { display: flex; gap: 8px; background: var(--surface); padding: 4px; border-radius: 12px; }
+  .type-toggle div {
+    flex: 1; text-align: center; font-size: 11.5px; font-weight: 700; padding: 8px; border-radius: 9px; color: var(--textMuted);
+  }
+  .type-toggle .active { background: linear-gradient(135deg, var(--primary), var(--violet)); color: var(--onPrimary); }
+
+  .symbol-toolbar-mini { margin-bottom: 7px; }
+  .action-chips { display: flex; gap: 5px; margin-bottom: 5px; }
+  .action-chip {
+    flex: 1; text-align: center; font-size: 10px; font-weight: 700; padding: 5px 2px; border-radius: 8px;
+    background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3); color: var(--primary);
+  }
+  .symbol-chips { display: flex; gap: 4px; overflow: hidden; }
+  .symbol-chips span {
+    font-size: 10.5px; border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 8px; color: var(--text); background: var(--surface); flex-shrink: 0;
+  }
+  .a-input {
+    border: 1px solid var(--border); border-radius: 11px; padding: 10px;
+    font-size: 12px; color: var(--textFaint); background: var(--surface);
+  }
+
+  .choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .choice-badge {
+    width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800;
+    background: var(--surface); border: 1px solid var(--border); color: var(--textMuted);
+  }
+  .choice-badge.correct { background: rgba(74,222,128,0.16); border-color: var(--success); color: var(--success); }
+  .choice-row .a-input { flex: 1; }
+  .choice-correct-tag {
+    font-size: 9px; font-weight: 700; color: var(--success); background: rgba(74,222,128,0.12);
+    border-radius: 999px; padding: 2px 6px; margin-inline-start: 4px; white-space: nowrap;
+  }
+
+  .img-picker {
+    border: 1.5px dashed rgba(34,211,238,0.4); border-radius: 12px; padding: 14px;
+    text-align: center; color: var(--primary); font-size: 11.5px; font-weight: 700;
+    background: rgba(34,211,238,0.05);
+  }
+  .img-picker .sub { display:block; font-weight: 400; color: var(--textFaint); font-size: 10px; margin-top: 3px; }
+
+  .a-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .a-actions .cancel {
+    flex: 1; border: 1px solid var(--border); border-radius: 12px; text-align: center; padding: 11px;
+    font-size: 12.5px; font-weight: 700; color: var(--textMuted);
+  }
+  .a-actions .save {
+    flex: 1.4; background: linear-gradient(135deg, var(--primary), var(--violet)); color: var(--onPrimary);
+    border-radius: 12px; text-align: center; padding: 11px; font-size: 12.5px; font-weight: 800;
+  }
+
+  .caption {
+    max-width: 780px; margin: 36px auto 0; text-align: center; color: var(--textFaint);
+    font-size: 12.5px; line-height: 1.9;
+  }
+  .caption b { color: var(--text); }
+</style>
+</head>
+<body>
+
+  <h1 class="page-title">معاينة: إعادة تصميم شاشة "كتابة الأسئلة"</h1>
+  <p class="page-sub">معاينة تصميم فقط — لسه مفيش أي كود اتغيّر · اتمرجح جوه كل موبايل تقدر تسكرول</p>
+
+  <div class="stage">
+
+    <!-- BEFORE -->
+    <div class="col">
+      <div class="col-label before">قبل (الحالي)</div>
+      <div class="phone">
+        <div class="statusbar"></div>
+        <div class="navbar">Exam Questions</div>
+        <div class="screen">
+          <p class="b-title">امتحان الفصل الأول — Exam Questions</p>
+          <p class="b-hint">Answered all at once, graded together — passes at ≥75%.</p>
+
+          <div class="b-row">
+            <div style="flex:1">
+              <p class="b-row-title">1. ما هي وحدة قياس القوة؟</p>
+              <p class="b-row-meta">Multiple choice</p>
+            </div>
+            <span class="b-danger">Delete</span>
+          </div>
+          <div class="b-row">
+            <div style="flex:1">
+              <p class="b-row-title">2. احسب السرعة إذا كانت...</p>
+              <p class="b-row-meta">Text answer</p>
+            </div>
+            <span class="b-danger">Delete</span>
+          </div>
+
+          <p class="b-label">Add a question</p>
+          <div class="b-toggle">
+            <div class="active">Multiple choice</div>
+            <div>Text answer</div>
+          </div>
+
+          <div class="b-toolbar-mini">
+            <span>$…$</span><span>B</span><span>x²</span><span>x³</span><span>xⁿ</span><span>x₀</span><span>x₁</span>
+          </div>
+          <div class="b-input">Question prompt...</div>
+
+          <div class="b-choice-row"><div class="b-choice-key">A</div><div class="b-input">Choice A</div></div>
+          <div class="b-choice-row"><div class="b-choice-key">B</div><div class="b-input">Choice B</div></div>
+          <div class="b-choice-row"><div class="b-choice-key">C</div><div class="b-input">Choice C</div></div>
+
+          <div class="b-img-btn">Add image</div>
+
+          <div class="b-actions">
+            <div class="cancel">Cancel</div>
+            <div class="save">Save Changes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="col">
+      <div class="col-label after">بعد (المقترح)</div>
+      <div class="phone">
+        <div class="statusbar"></div>
+        <div class="navbar">الأسئلة</div>
+        <div class="screen">
+          <div class="a-eyebrow">📝 امتحان الفصل الأول</div>
+          <p class="a-title">أسئلة الامتحان</p>
+          <p class="a-hint">بتتحسب كلها مع بعض — الطالب لازم يعدّي ٪75 عشان ينجح.</p>
+
+          <div class="q-card">
+            <div class="q-badge">🔘</div>
+            <div class="q-body">
+              <p class="q-prompt">1. ما هي وحدة قياس القوة في النظام الدولي؟</p>
+              <span class="q-chip">اختيار من متعدد</span>
+            </div>
+            <div class="q-actions">
+              <div class="q-icon-btn">🗑</div>
+            </div>
+          </div>
+
+          <div class="q-card">
+            <div class="q-badge text">✏️</div>
+            <div class="q-body">
+              <p class="q-prompt">2. احسب السرعة النهائية إذا كانت $v_0 = 5$ م/ث والتسارع $a = 2$ م/ث²...</p>
+              <span class="q-chip">إجابة نصية</span>
+            </div>
+            <div class="q-actions">
+              <div class="q-icon-btn">🗑</div>
+            </div>
+          </div>
+
+          <div class="form-card">
+            <div class="edit-banner">✏️ بتضيف سؤال جديد رقم 3</div>
+
+            <div class="section">
+              <p class="section-label">🔀 نوع السؤال</p>
+              <div class="type-toggle">
+                <div class="active">اختيار من متعدد</div>
+                <div>إجابة نصية</div>
+              </div>
+            </div>
+
+            <div class="section">
+              <p class="section-label">❓ نص السؤال</p>
+              <div class="symbol-toolbar-mini">
+                <div class="action-chips">
+                  <div class="action-chip">$…$ رياضيات</div>
+                  <div class="action-chip">B غامق</div>
+                  <div class="action-chip">aⁿ أُس</div>
+                  <div class="action-chip">aₙ دليل</div>
+                </div>
+                <div class="symbol-chips">
+                  <span>√</span><span>π</span><span>θ</span><span>α</span><span>β</span><span>×</span><span>≤</span>
+                </div>
+              </div>
+              <div class="a-input">اكتب نص السؤال هنا...</div>
+            </div>
+
+            <div class="section">
+              <p class="section-label">☑️ الاختيارات <span style="color:var(--success)">— دوس على الحرف الصح</span></p>
+              <div class="choice-row">
+                <div class="choice-badge correct">A</div>
+                <div class="a-input">قوة نيوتن</div>
+                <span class="choice-correct-tag">✓ صح</span>
+              </div>
+              <div class="choice-row">
+                <div class="choice-badge">B</div>
+                <div class="a-input">جول</div>
+              </div>
+              <div class="choice-row">
+                <div class="choice-badge">C</div>
+                <div class="a-input">واط</div>
+              </div>
+            </div>
+
+            <div class="section">
+              <p class="section-label">💡 الشرح (اختياري)</p>
+              <div class="a-input">هيظهر للطالب بعد ما يجاوب...</div>
+            </div>
+
+            <div class="section">
+              <p class="section-label">🖼 صورة السؤال (اختياري)</p>
+              <div class="img-picker">＋ إضافة صورة<span class="sub">رسم بياني أو صورة توضيحية</span></div>
+            </div>
+
+            <div class="a-actions">
+              <div class="cancel">إلغاء</div>
+              <div class="save">💾 حفظ السؤال</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="caption">
+    التغييرات الأساسية: كل سؤال في القايمة بقى <b>كارت</b> بأيقونة تفرّق بين "اختيار من متعدد" و"إجابة نصية"، ومعاه أول سطرين من نص السؤال بدل عنوان مجرد. فورم الإضافة بقى <b>كارت واحد مقسّم لأقسام واضحة</b> (نوع السؤال / نص السؤال / الاختيارات / الشرح / الصورة) كل قسم بعنوان صغير قصاده أيقونة، بدل ما تكون كل الحقول متلزقة تحت بعض. شريط الرموز اتحط جوه قسم "نص السؤال" وشكله متماشي مع باقي الكاردز. الاختيار الصح اتلوّن أخضر واضح بدل ما يبان بس بلون الحدود. لما تكون بتعدّل سؤال موجود، هيظهرلك شريط برتقالي فوق الفورم يقولك "بتعدّل على سؤال رقم كذا" بدل ما تلاقي نفسك مش عارف إنت في وضع إضافة ولا تعديل.
+  </p>
+
+</body>
+</html>

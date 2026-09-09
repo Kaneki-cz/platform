@@ -90,6 +90,21 @@ export const fonts = {
   // which matters a lot for a physics app.
   serif: 'STIXTwoText_400Regular',
   serifBold: 'STIXTwoText_700Bold',
+  // Real italic font files (loaded in app/_layout.tsx alongside the two
+  // above) — used for a math variable/Greek letter (see MathText.tsx's
+  // splitItalicRuns), which textbook convention sets in italic. These
+  // replace an earlier version that faked italic with RN's own
+  // `fontStyle: 'italic'` on the upright serifBold face: without a real
+  // italic glyph design to switch to, Android synthesizes italic by
+  // skewing the upright glyph's outline, which visibly mangled thick
+  // vertical strokes — a capital "I" in particular came out looking like
+  // a thin diagonal stroke, not a serif "I" at all, and noticeably
+  // lighter than the rest of the bold equation around it. A real italic
+  // font file has its own hand-designed bold-weight glyph shapes, so this
+  // fixes both complaints (wrong shape, looks-less-bold) at once, with no
+  // synthetic transform involved.
+  serifItalic: 'STIXTwoText_400Regular_Italic',
+  serifBoldItalic: 'STIXTwoText_700Bold_Italic',
 } as const;
 
 export const radius = {

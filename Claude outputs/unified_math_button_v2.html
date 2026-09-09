@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>أفكار إضافية لزرار الرياضيات</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+  :root{
+    --primary:#22D3EE; --primaryDark:#06B6D4; --onPrimary:#04212B;
+    --accent:#F97316; --accentDark:#C2410C;
+    --violet:#6D5DF6; --violetDark:#4C3FCB;
+    --success:#22C55E; --danger:#F87171;
+    --text:#F1F5F9; --textMuted:#8B95A8; --textFaint:#5B6472;
+    --bg:#05070C; --surface:#10182B; --surfaceAlt:#161D2E; --border:#232C42;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Cairo',sans-serif; padding:28px 18px 60px; direction:rtl;
+  }
+  .serif{ font-family:'STIX Two Text', serif; }
+  .wrap{ max-width:640px; margin:0 auto; }
+  h1{ font-size:20px; margin:0 0 6px; }
+  .lead{ color:var(--textFaint); font-size:13px; line-height:1.8; margin:0 0 30px; }
+  .concept{ background:var(--surfaceAlt); border:1px solid var(--border); border-radius:20px; padding:22px; margin-bottom:22px; }
+  .concept-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .concept-num{
+    width:26px; height:26px; border-radius:999px; background:var(--surface); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--textMuted);
+    flex-shrink:0;
+  }
+  .concept-title{ font-size:15px; font-weight:700; margin:0; }
+  .concept-desc{ color:var(--textFaint); font-size:12.5px; line-height:1.8; margin:0 0 18px; }
+  .stage{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px; }
+
+  /* shared symbol row */
+  .symrow{ display:flex; align-items:center; gap:8px; padding:6px 2px 2px; overflow-x:auto; }
+  .symrow::-webkit-scrollbar{ display:none; }
+  .symgroup{ display:flex; gap:8px; flex-shrink:0; }
+  .symdiv{ width:1px; height:22px; background:var(--border); margin:0 8px; flex-shrink:0; }
+  .symchip{
+    min-width:34px; height:32px; padding:0 8px; border-radius:999px; border:1px solid var(--border);
+    background:var(--surfaceAlt); display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:600; color:var(--text); flex-shrink:0;
+  }
+  .tag{
+    display:inline-block; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px;
+    background:var(--surface); border:1px solid var(--border); color:var(--textMuted); margin-inline-end:6px;
+  }
+
+  /* ============ CONCEPT E — Layered depth stack ============ */
+  .stackWrapE{ display:flex; justify-content:center; padding:10px 0 22px; }
+  .stackE{ position:relative; width:104px; height:76px; }
+  .cardE{
+    position:absolute; width:64px; height:64px; border-radius:16px; top:6px;
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+    border:1px solid var(--border);
+  }
+  .cardE.c1{ right:0; background:rgba(249,115,22,0.14); border-color:rgba(249,115,22,0.35); color:var(--accent); transform:rotate(9deg); }
+  .cardE.c2{ right:14px; background:rgba(109,93,246,0.14); border-color:rgba(109,93,246,0.35); color:var(--violet); transform:rotate(-6deg); }
+  .cardE.c3{
+    right:28px; width:70px; height:70px; top:0; background:var(--surfaceAlt);
+    border:1.5px solid var(--primary); color:var(--primary); font-size:26px; font-style:italic;
+    font-family:'STIX Two Text',serif; font-weight:700; box-shadow:0 10px 22px -8px rgba(34,211,238,0.5); z-index:2;
+  }
+  .stackE-label{ text-align:center; color:var(--textMuted); font-size:11px; font-weight:600; margin-top:2px; margin-bottom:16px; }
+
+  /* ============ CONCEPT F — Notched tag / ticket shape ============ */
+  .ticketRow{ display:flex; margin-bottom:16px; }
+  .ticketF{
+    position:relative; flex:1; display:flex; align-items:center; gap:10px; padding:13px 18px 13px 14px;
+    background:rgba(34,211,238,0.12); border:1px solid rgba(34,211,238,0.4);
+    clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 50%, calc(100% - 22px) 100%, 0 100%);
+  }
+  .ticketF .glyph{ font-size:19px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .ticketF .label{ font-size:12.5px; font-weight:700; color:var(--primary); flex:1; }
+  .ticketF .dots{ display:flex; gap:4px; margin-inline-end:14px; }
+  .ticketF .dots span{ width:7px; height:7px; border-radius:999px; }
+  .ticketF .dots .d1{ background:var(--accent); }
+  .ticketF .dots .d2{ background:var(--violet); }
+  .ticketF .dots .d3{ background:var(--success); }
+
+  /* ============ CONCEPT G — Ring-dial indicator ============ */
+  .ringRow{ display:flex; justify-content:center; padding:6px 0 18px; }
+  .ringG{
+    position:relative; width:74px; height:74px; border-radius:999px;
+    background:
+      conic-gradient(var(--accent) 0deg 120deg, var(--violet) 120deg 240deg, var(--success) 240deg 360deg);
+    padding:4px; display:flex; align-items:center; justify-content:center;
+  }
+  .ringG .inner{
+    width:100%; height:100%; border-radius:999px; background:var(--surfaceAlt);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ringG .glyph{ font-size:26px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .ringG-label{ text-align:center; color:var(--textMuted); font-size:11px; font-weight:600; margin-top:8px; margin-bottom:16px; }
+
+  /* ============ CONCEPT H — Dropdown chip with chevron ============ */
+  .chipRowH{ display:flex; margin-bottom:14px; }
+  .chipH{
+    flex:1; display:flex; align-items:center; gap:8px; justify-content:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px;
+    border-bottom:2.5px solid var(--primary);
+  }
+  .chipH .glyph{ font-size:17px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .chipH .label{ font-size:12.5px; font-weight:700; color:var(--text); }
+  .chipH .chev{ color:var(--textFaint); font-size:11px; margin-inline-start:2px; }
+  .sheetH{
+    margin-top:-4px; margin-bottom:14px; background:var(--surface); border:1px solid var(--border);
+    border-top:none; border-radius:0 0 12px 12px; padding:10px 12px 12px; display:flex; gap:8px;
+  }
+  .sheetH .opt{
+    flex:1; text-align:center; padding:9px 4px; border-radius:10px; font-size:11px; font-weight:700;
+    border:1px solid;
+  }
+  .sheetH .frac{ background:rgba(249,115,22,0.12); border-color:rgba(249,115,22,0.35); color:var(--accent); }
+  .sheetH .exp{ background:rgba(109,93,246,0.12); border-color:rgba(109,93,246,0.35); color:var(--violet); }
+  .sheetH .sub{ background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.35); color:var(--success); }
+  .noteUnder{ text-align:center; color:var(--textFaint); font-size:10px; margin:-8px 0 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧮 أفكار إضافية لزرار "رياضيات" الموحّد</h1>
+  <p class="lead">
+    أربع أشكال تانية مختلفة تمامًا عن الأربعة اللي فاتوا (المتدرّج، الدائرة، الكبسولة المقسّمة، التمدّد) — كل واحدة
+    فيها إحساس/شكل مختلف عن التاني، وتحت كل واحدة شريط الرموز زي ما هو في التطبيق.
+  </p>
+
+  <!-- ================= CONCEPT E ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">5</div>
+      <p class="concept-title">الكروت المتراصّة (Layered Stack)</p>
+    </div>
+    <p class="concept-desc">
+      الـ π في كارت رئيسي واضح فوق، وورا منه كارتين صغيرين مايلين شوية (زي ورق متكدّس) بألوان الكسر والأس —
+      إحساس بصري إن "جوه الزرار ده كذا حاجة متلاقية"، من غير ما تحتاج أيقونات نص. شكله مختلف تمامًا عن أي زرار
+      عادي في التطبيق، وده اللي بيخليه مميز.
+    </p>
+    <div class="stage">
+      <div class="stackWrapE">
+        <div class="stackE">
+          <div class="cardE c1">x₂</div>
+          <div class="cardE c2">x²</div>
+          <div class="cardE c3">π</div>
+        </div>
+      </div>
+      <div class="stackE-label">رياضيات</div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT F ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">6</div>
+      <p class="concept-title">شكل التذكرة المفرّغة (Notched Ticket)</p>
+    </div>
+    <p class="concept-desc">
+      بدل المستطيل/الكبسولة العادية، الزرار شكله "تذكرة" له سنة مفرّغة على الجنب (زي تذكرة سينما) — هندسيًا مختلف
+      تمامًا عن أي عنصر تاني في الشاشة، فيبان مميز من أول نظرة. جواه π + تسمية، وعلى الجنب 3 نقط ملوّنة صغيرة
+      (بدل الأيقونات) كإشارة بسيطة إن فيه أدوات تانية جواه.
+    </p>
+    <div class="stage">
+      <div class="ticketRow">
+        <div class="ticketF">
+          <div class="glyph">π</div>
+          <div class="label">رياضيات</div>
+          <div class="dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+        </div>
+      </div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT G ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">7</div>
+      <p class="concept-title">حلقة الأقسام الثلاثة (Ring Dial)</p>
+    </div>
+    <p class="concept-desc">
+      دائرة الـ π محاطة بحلقة رفيعة مقسومة لثلاث أقواس متساوية بألوان الأدوات التلاتة (كسر/أس/دليل سفلي) — زي
+      مؤشر Dial بيقولك بصريًا "3 أدوات لفّة واحدة حواليها" من غير ما تحتاج نص أو أيقونات إضافية خالص. أنضف شكل
+      من ناحية البساطة البصرية.
+    </p>
+    <div class="stage">
+      <div class="ringRow">
+        <div class="ringG"><div class="inner"><div class="glyph">π</div></div></div>
+      </div>
+      <div class="ringG-label">رياضيات</div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT H ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">8</div>
+      <p class="concept-title">شريحة القائمة المنسدلة (Dropdown Chip)</p>
+    </div>
+    <p class="concept-desc">
+      زرار بسيط وواضح كإنه "قائمة منسدلة" — خط سفلي بلون مميز وسهم صغير ▾ بيقول صراحة "دوس تفتح خيارات". لما
+      تدوس، بدل نافذة منبثقة، شريط صغير بيتفتح تحته على طول (attached) فيه التلاتة خيارات كأزرار — شكل مألوف
+      لأي حد استخدم قائمة منسدلة قبل كده، فمفيش لبس في الاستخدام.
+    </p>
+    <div class="stage">
+      <div class="stateLabel" style="font-size:10.5px;color:var(--textFaint);margin-bottom:8px;font-weight:600;">قفول</div>
+      <div class="chipRowH">
+        <div class="chipH">
+          <span class="chev">▾</span>
+          <div class="label">رياضيات</div>
+          <div class="glyph">π</div>
+        </div>
+      </div>
+      <div class="stateLabel" style="font-size:10.5px;color:var(--textFaint);margin-bottom:8px;font-weight:600;">مفتوح (بعد الدوس)</div>
+      <div class="chipRowH" style="margin-bottom:0;">
+        <div class="chipH" style="border-radius:12px 12px 0 0;">
+          <span class="chev" style="transform:rotate(180deg);display:inline-block;">▾</span>
+          <div class="label">رياضيات</div>
+          <div class="glyph">π</div>
+        </div>
+      </div>
+      <div class="sheetH">
+        <div class="opt sub">دليل سفلي</div>
+        <div class="opt exp">أُس</div>
+        <div class="opt frac">كسر</div>
+      </div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="concept" style="background:transparent;border-style:dashed;">
+    <p class="concept-desc" style="margin:0;">
+      <span class="tag">رأيي</span>
+      لو عايز شكل "يلفت النظر" فعلاً — الكروت المتراصّة (5) أو التذكرة المفرّغة (6) أكتر حاجة مميزة هندسيًا.
+      لو عايز أوضح تفاعل ومفيش لبس في الاستخدام من أول نظرة — القائمة المنسدلة (8) أقرب لحاجة الناس متعوّدة عليها.
+      حلقة الأقسام (7) أنضف حل بصريًا لو عايز بساطة. قولّي عاجبك أنهي واحدة من التمنية عشان نبدأ فيها.
+    </p>
+  </div>
+</div>
+</body>
+</html>

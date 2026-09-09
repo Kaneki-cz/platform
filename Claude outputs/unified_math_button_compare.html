@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>مقارنة الفكرتين المحسّنتين</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+  :root{
+    --primary:#22D3EE; --primaryDark:#06B6D4; --onPrimary:#04212B;
+    --accent:#F97316; --accentDark:#C2410C;
+    --violet:#6D5DF6; --violetDark:#4C3FCB;
+    --success:#22C55E; --danger:#F87171;
+    --text:#F1F5F9; --textMuted:#8B95A8; --textFaint:#5B6472;
+    --bg:#05070C; --surface:#10182B; --surfaceAlt:#161D2E; --border:#232C42;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Cairo',sans-serif; padding:28px 18px 60px; direction:rtl;
+  }
+  .wrap{ max-width:920px; margin:0 auto; }
+  h1{ font-size:20px; margin:0 0 6px; }
+  .lead{ color:var(--textFaint); font-size:13px; line-height:1.8; margin:0 0 26px; }
+
+  .cols{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:720px){ .cols{ grid-template-columns:1fr; } }
+
+  .col{ background:var(--surfaceAlt); border:1px solid var(--border); border-radius:20px; padding:20px; }
+  .col-head{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .badge-v{
+    font-size:10px; font-weight:700; color:var(--onPrimary); background:var(--primary);
+    padding:2px 8px; border-radius:999px;
+  }
+  .col-title{ font-size:15px; font-weight:700; margin:0; }
+  .col-desc{ color:var(--textFaint); font-size:12px; line-height:1.75; margin:8px 0 16px; }
+
+  .stage{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 16px; }
+
+  /* shared symbol row */
+  .symrow{ display:flex; align-items:center; gap:8px; padding:6px 2px 2px; overflow-x:auto; }
+  .symrow::-webkit-scrollbar{ display:none; }
+  .symgroup{ display:flex; gap:8px; flex-shrink:0; }
+  .symdiv{ width:1px; height:22px; background:var(--border); margin:0 8px; flex-shrink:0; }
+  .symchip{
+    min-width:34px; height:32px; padding:0 8px; border-radius:999px; border:1px solid var(--border);
+    background:var(--surfaceAlt); display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:600; color:var(--text); flex-shrink:0;
+  }
+
+  .whatsnew{ margin-top:16px; }
+  .whatsnew-label{ font-size:10.5px; font-weight:700; color:var(--textMuted); margin-bottom:8px; }
+  .whatsnew ul{ margin:0; padding-inline-start:18px; }
+  .whatsnew li{ font-size:12px; color:var(--textFaint); line-height:1.9; margin-bottom:4px; }
+  .whatsnew li::marker{ color:var(--primary); }
+
+  /* ============ REFINED PILL ============ */
+  .pillWrap{ margin-bottom:10px; }
+  .pillA2{
+    display:flex; align-items:center; gap:10px; width:100%;
+    background:linear-gradient(120deg,var(--primary),var(--violet));
+    border-radius:999px; padding:8px 14px 8px 10px; position:relative;
+    box-shadow:0 8px 20px -8px rgba(34,211,238,0.5), inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  .pillA2 .iconChip{
+    width:38px; height:38px; border-radius:999px; background:rgba(4,33,43,0.85);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .pillA2 .iconChip .glyph{ font-size:19px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .pillA2 .textcol{ flex:1; }
+  .pillA2 .label{ color:var(--onPrimary); font-weight:700; font-size:13px; }
+  .pillA2 .sub{ color:rgba(4,33,43,0.7); font-weight:600; font-size:9.5px; margin-top:1px; }
+  .pillA2 .stack2{ display:flex; align-items:center; }
+  .pillA2 .stack2 .mini{
+    width:24px; height:24px; border-radius:999px; background:var(--surfaceAlt);
+    border:2px solid rgba(4,33,43,0.35); display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:800; margin-inline-start:-9px; box-shadow:0 2px 5px rgba(0,0,0,0.25);
+  }
+  .pillA2 .stack2 .mini:first-child{ margin-inline-start:0; }
+  .pillA2 .stack2 .mfrac{ color:var(--accent); z-index:3; }
+  .pillA2 .stack2 .mexp{ color:var(--violet); z-index:2; }
+  .pillA2 .stack2 .msub{ color:var(--success); z-index:1; }
+  .pillA2 .chev{ color:rgba(4,33,43,0.55); font-size:11px; margin-inline-start:6px; }
+
+  /* ============ REFINED HUB ============ */
+  .hubWrap2{ display:flex; justify-content:center; padding:14px 0 10px; position:relative; }
+  .hubHalo{
+    position:absolute; width:104px; height:104px; border-radius:999px;
+    background:radial-gradient(circle, rgba(34,211,238,0.28), transparent 70%);
+    filter:blur(2px);
+  }
+  .hubStage{ position:relative; width:104px; height:104px; }
+  .spoke{ position:absolute; background:var(--border); }
+  .spoke.s1{ width:1.5px; height:16px; top:8px; left:50%; transform:translateX(-50%) rotate(0deg); transform-origin:bottom center; }
+  .spoke.s2{ width:1.5px; height:16px; bottom:12px; right:14px; transform:rotate(35deg); transform-origin:top center; }
+  .spoke.s3{ width:1.5px; height:16px; bottom:12px; left:14px; transform:rotate(-35deg); transform-origin:top center; }
+  .hubB2{
+    position:absolute; top:14px; left:14px; width:76px; height:76px; border-radius:999px;
+    background:var(--surfaceAlt); border:2px solid var(--primary);
+    display:flex; align-items:center; justify-content:center; z-index:2;
+    box-shadow:0 8px 20px -8px rgba(34,211,238,0.5);
+  }
+  .hubB2 .glyph{ font-size:28px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .orbit2{
+    position:absolute; width:27px; height:27px; border-radius:999px; background:var(--surface);
+    border:1.5px solid; display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:800; z-index:3;
+  }
+  .orbit2.top{ top:0; left:50%; transform:translateX(-50%); color:var(--accent); border-color:var(--accent); }
+  .orbit2.br{ bottom:2px; right:0; color:var(--violet); border-color:var(--violet); }
+  .orbit2.bl{ bottom:2px; left:0; color:var(--success); border-color:var(--success); }
+  .hubB2-label{
+    text-align:center; color:var(--text); font-size:12px; font-weight:700; margin-top:8px; margin-bottom:16px;
+    background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:5px 14px; display:inline-block;
+  }
+  .hubLabelRow{ display:flex; justify-content:center; }
+
+  .tag{
+    display:inline-block; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px;
+    background:var(--surface); border:1px solid var(--border); color:var(--textMuted); margin-inline-end:6px;
+  }
+  .verdict{ background:var(--surfaceAlt); border:1px dashed var(--border); border-radius:20px; padding:20px; margin-top:20px; }
+  .verdict-title{ font-size:14px; font-weight:700; margin:0 0 10px; }
+  table{ width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  th,td{ text-align:right; padding:8px 6px; border-bottom:1px solid var(--border); color:var(--textFaint); }
+  th{ color:var(--textMuted); font-size:11px; font-weight:700; }
+  td.win{ color:var(--success); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧮 نسخة محسّنة: الكبسولة المتدرّجة مقابل الشارة الدائرية</h1>
+  <p class="lead">
+    حسّنت في التصميمين اللي عجبوك، وحطيتهم جنب بعض عشان تقارن مباشرة. تحت كل واحد كتبت التحسينات اللي دخلت عليه
+    عن النسخة الأولى، وتحت الاتنين شريط الرموز زي التطبيق الحقيقي.
+  </p>
+
+  <div class="cols">
+    <!-- ============= REFINED PILL ============= -->
+    <div class="col">
+      <div class="col-head">
+        <span class="badge-v">محسّنة</span>
+        <p class="col-title">الكبسولة المتدرّجة</p>
+      </div>
+      <div class="stage">
+        <div class="pillWrap">
+          <div class="pillA2">
+            <span class="chev">›</span>
+            <div class="stack2">
+              <div class="mini msub">x₂</div>
+              <div class="mini mexp">x²</div>
+              <div class="mini mfrac">a/b</div>
+            </div>
+            <div class="textcol">
+              <div class="label">رياضيات</div>
+              <div class="sub">كسر · أُس · دليل سفلي</div>
+            </div>
+            <div class="iconChip"><div class="glyph">π</div></div>
+          </div>
+        </div>
+        <div class="symrow">
+          <div class="symgroup"><div class="symchip">√</div></div>
+          <div class="symdiv"></div>
+          <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div></div>
+        </div>
+      </div>
+      <div class="whatsnew">
+        <div class="whatsnew-label">إيه اللي اتحسّن</div>
+        <ul>
+          <li>الـ π بقى جوه دايرة داكنة واضحة (icon chip) بدل ما يكون عايم في التدرّج — يبان "أيقونة" حقيقية مش نص لوحده.</li>
+          <li>أضفت سطر فرعي صغير تحت الاسم "كسر · أُس · دليل سفلي" يقول بالكلمة اللي جوّه، مش بس دوائر رموز.</li>
+          <li>الدوائر الصغيرة بقت متدرّجة في الحجم والعمق (ظل خفيف) بدل تراكب مسطّح.</li>
+          <li>سهم صغير › على الحافة بيقول بصريًا "فيه أكتر لو دوست".</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ============= REFINED HUB ============= -->
+    <div class="col">
+      <div class="col-head">
+        <span class="badge-v">محسّنة</span>
+        <p class="col-title">الشارة الدائرية (Hub)</p>
+      </div>
+      <div class="stage">
+        <div class="hubWrap2">
+          <div class="hubHalo"></div>
+          <div class="hubStage">
+            <div class="spoke s1"></div>
+            <div class="spoke s2"></div>
+            <div class="spoke s3"></div>
+            <div class="hubB2"><div class="glyph">π</div></div>
+            <div class="orbit2 top">a/b</div>
+            <div class="orbit2 br">x²</div>
+            <div class="orbit2 bl">x₂</div>
+          </div>
+        </div>
+        <div class="hubLabelRow"><div class="hubB2-label">رياضيات</div></div>
+        <div class="symrow">
+          <div class="symgroup"><div class="symchip">√</div></div>
+          <div class="symdiv"></div>
+          <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div></div>
+        </div>
+      </div>
+      <div class="whatsnew">
+        <div class="whatsnew-label">إيه اللي اتحسّن</div>
+        <ul>
+          <li>الدوائر التلاتة اتوزّعت بالتساوي (فوق، يمين تحت، شمال تحت) بدل ما تكون متزاحمة تحت.</li>
+          <li>خطوط رفيعة (spokes) بتوصل من المركز للدوائر الصغيرة — بتأكد بصريًا إن الكل ده "حاجة واحدة".</li>
+          <li>هالة ضوء ناعمة (glow) ورا الدايرة كلها بتدّيها إحساس "مميز/رئيسي" مش زرار عادي.</li>
+          <li>التسمية تحت بقت في شريحة (chip) ليها خلفية وحدود، متناسقة مع باقي عناصر التطبيق.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <p class="verdict-title">📊 مقارنة سريعة</p>
+    <table>
+      <tr><th>المعيار</th><th>الكبسولة المتدرّجة</th><th>الشارة الدائرية</th></tr>
+      <tr><td>الارتفاع في الصف</td><td class="win">نفس ارتفاع صف الأزرار العادي</td><td>أطول من الصف — محتاجة مساحة زيادة فوق/تحت</td></tr>
+      <tr><td>وضوح إن جواها 3 أدوات</td><td>واضح (سطر فرعي بالاسم)</td><td class="win">أوضح بصريًا (هالة + خطوط توصيل)</td></tr>
+      <tr><td>سهولة التنفيذ في الكود</td><td class="win">أسهل — عنصر واحد داخل الصف الحالي</td><td>أصعب شوية — لازم تعديل ليها مساحة خاصة</td></tr>
+      <tr><td>الإحساس العام</td><td>عملي ومتناسق مع باقي الأزرار</td><td class="win">مميز/"بطولي" أكتر — يلفت النظر فورًا</td></tr>
+    </table>
+    <p style="font-size:12px;color:var(--textFaint);line-height:1.8;margin-top:14px;margin-bottom:0;">
+      <span class="tag">رأيي</span>
+      لو عايز حل سريع وسهل التنفيذ ومتناسق مع باقي التصميم — <b style="color:var(--text)">الكبسولة المتدرّجة</b> أفضل، وبتاخد نفس مكان الصف الحالي بالظبط من غير أي تعديل في التخطيط (layout). لو عايز عنصر يبان "مميز جدًا" ومستعد تاخد مساحة إضافية بسيطة فوق باقي الأزرار — <b style="color:var(--text)">الشارة الدائرية</b> إحساسها أقوى بصريًا.
+    </p>
+  </div>
+</div>
+</body>
+</html>

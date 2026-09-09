@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>فكرة زرار الرياضيات الموحد</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+  :root{
+    --primary:#22D3EE; --primaryDark:#06B6D4; --onPrimary:#04212B;
+    --accent:#F97316; --accentDark:#C2410C;
+    --violet:#6D5DF6; --violetDark:#4C3FCB;
+    --success:#22C55E; --danger:#F87171;
+    --text:#F1F5F9; --textMuted:#8B95A8; --textFaint:#5B6472;
+    --bg:#05070C; --surface:#10182B; --surfaceAlt:#161D2E; --border:#232C42;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Cairo',sans-serif; padding:28px 18px 60px;
+    direction:rtl;
+  }
+  .serif{ font-family:'STIX Two Text', serif; }
+  .wrap{ max-width:640px; margin:0 auto; }
+  h1{ font-size:20px; margin:0 0 6px; }
+  .lead{ color:var(--textFaint); font-size:13px; line-height:1.8; margin:0 0 30px; }
+  .concept{
+    background:var(--surfaceAlt); border:1px solid var(--border); border-radius:20px;
+    padding:22px; margin-bottom:22px;
+  }
+  .concept-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .concept-num{
+    width:26px; height:26px; border-radius:999px; background:var(--surface); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--textMuted);
+    flex-shrink:0;
+  }
+  .concept-title{ font-size:15px; font-weight:700; margin:0; }
+  .concept-desc{ color:var(--textFaint); font-size:12.5px; line-height:1.8; margin:0 0 18px; }
+  .stage{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px;
+  }
+
+  /* ---------- shared symbol row (matches real app) ---------- */
+  .symrow{ display:flex; align-items:center; gap:8px; padding:6px 2px 2px; overflow-x:auto; }
+  .symrow::-webkit-scrollbar{ display:none; }
+  .symgroup{ display:flex; gap:8px; flex-shrink:0; }
+  .symdiv{ width:1px; height:22px; background:var(--border); margin:0 8px; flex-shrink:0; }
+  .symchip{
+    min-width:34px; height:32px; padding:0 8px; border-radius:999px; border:1px solid var(--border);
+    background:var(--surfaceAlt); display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:600; color:var(--text); flex-shrink:0;
+  }
+  .symrow-label{ text-align:center; color:var(--textFaint); font-size:10px; margin-top:10px; }
+
+  /* ============ CONCEPT A — Unified gradient pill ============ */
+  .pillA{
+    display:flex; align-items:center; gap:10px; width:100%;
+    background:linear-gradient(135deg,var(--primary),var(--violet));
+    border-radius:999px; padding:12px 16px; margin-bottom:14px;
+    box-shadow:0 6px 18px -6px rgba(34,211,238,0.45);
+  }
+  .pillA .glyph{ font-size:20px; font-style:italic; color:var(--onPrimary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .pillA .label{ color:var(--onPrimary); font-weight:700; font-size:13.5px; flex:1; }
+  .pillA .stack{ display:flex; align-items:center; }
+  .pillA .stack span{
+    width:26px; height:26px; border-radius:999px; background:rgba(4,33,43,0.22);
+    display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--onPrimary);
+    margin-inline-start:-8px; border:1.5px solid rgba(4,33,43,0.3);
+  }
+  .pillA .stack span:first-child{ margin-inline-start:0; }
+
+  /* ============ CONCEPT B — Hub badge with orbit dots ============ */
+  .hubRow{ display:flex; justify-content:center; padding:8px 0 18px; }
+  .hubB{
+    position:relative; width:76px; height:76px; border-radius:999px;
+    background:var(--surfaceAlt); border:2px solid var(--primary);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 6px rgba(34,211,238,0.10), 0 8px 20px -8px rgba(34,211,238,0.5);
+  }
+  .hubB .glyph{ font-size:30px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .hubB .orbit{
+    position:absolute; width:24px; height:24px; border-radius:999px; background:var(--surface);
+    border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:9.5px; font-weight:700;
+  }
+  .hubB .o1{ bottom:-6px; right:-6px; color:var(--accent); border-color:var(--accent); }
+  .hubB .o2{ bottom:-6px; left:-6px; color:var(--violet); border-color:var(--violet); }
+  .hubB .o3{ top:-6px; left:50%; transform:translateX(-50%); color:var(--success); border-color:var(--success); }
+  .hubB-label{ text-align:center; color:var(--textMuted); font-size:11px; font-weight:600; margin-top:4px; }
+
+  /* ============ CONCEPT C — Segmented capsule ============ */
+  .capC{
+    display:flex; width:100%; border-radius:18px; overflow:hidden; border:1px solid var(--border);
+    margin-bottom:14px; background:var(--surface);
+  }
+  .capC .main{
+    flex:1; display:flex; align-items:center; gap:8px; padding:14px 16px;
+    background:rgba(34,211,238,0.10);
+  }
+  .capC .main .glyph{ font-size:22px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .capC .main .label{ font-size:13px; font-weight:700; color:var(--primary); }
+  .capC .divider{ width:1px; background:var(--border); }
+  .capC .mini{
+    width:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    background:var(--surfaceAlt);
+  }
+  .capC .mini .m{ font-size:10.5px; font-weight:700; }
+  .capC .mini .m1{ color:var(--accent); }
+  .capC .mini .m2{ color:var(--violet); }
+  .capC .mini .m3{ color:var(--success); }
+
+  /* ============ CONCEPT D — expand in place (two states) ============ */
+  .stateLabel{ font-size:10.5px; color:var(--textFaint); margin-bottom:8px; font-weight:600; }
+  .rowD{ display:flex; gap:8px; margin-bottom:16px; }
+  .btnD{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    border-radius:12px; padding:11px 8px; border:1px solid;
+  }
+  .btnD.collapsedMath{
+    background:rgba(34,211,238,0.14); border-color:rgba(34,211,238,0.4);
+  }
+  .btnD.collapsedMath .glyph{ font-size:16px; font-style:italic; color:var(--primary); font-family:'STIX Two Text',serif; font-weight:700; }
+  .btnD.collapsedMath .label{ font-size:10px; color:var(--primary); font-weight:600; }
+  .btnD.ghost{ background:var(--surfaceAlt); border-color:var(--border); }
+  .btnD.ghost .label{ font-size:10px; color:var(--textFaint); font-weight:600; }
+  .rowD.expanded .frac{ background:rgba(249,115,22,0.14); border-color:rgba(249,115,22,0.4); }
+  .rowD.expanded .frac .label{ color:var(--accent); }
+  .rowD.expanded .exp{ background:rgba(109,93,246,0.14); border-color:rgba(109,93,246,0.4); }
+  .rowD.expanded .exp .label{ color:var(--violet); }
+  .rowD.expanded .sub{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.4); }
+  .rowD.expanded .sub .label{ color:var(--success); }
+  .arrowNote{ display:flex; align-items:center; justify-content:center; color:var(--textFaint); font-size:16px; margin:2px 0 14px; }
+
+  .tag{
+    display:inline-block; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px;
+    background:var(--surface); border:1px solid var(--border); color:var(--textMuted); margin-inline-end:6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧮 فكرة: زرار "رياضيات" واحد بدل الأربعة</h1>
+  <p class="lead">
+    بدل ما يكون عندنا 4 أزرار منفصلة (رياضيات / كسر / أس / دليل سفلي)، بما إن الكسر والأس والدليل السفلي كلهم أصلاً أدوات
+    "رياضية" — تبقى الخانة الأربعة كلها زرار واحد بس، شكله مميز، وبيفتح الثلاثة التانية من جواه. تحت كل فكرة حطيت شكل
+    الرمز لوحده، وتحته شريط الرموز (θ π α β...) زي ما هو في التطبيق الحالي، عشان تتخيل الاتنين مع بعض.
+  </p>
+
+  <!-- ================= CONCEPT A ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">1</div>
+      <p class="concept-title">الكبسولة المتدرّجة (Gradient Pill)</p>
+    </div>
+    <p class="concept-desc">
+      زرار واحد عريض بلون متدرّج (نفس تدرّج التابات الأساسي في التطبيق cyan → violet) بدل المربعات الأربعة الصغيرة —
+      شكله "أهم" من باقي الأزرار عشان هو بوابة كل حاجة رياضية. الدواير الصغيرة على اليمين معاينة سريعة لما جواه
+      (a/b، x²، x₂) — دوس عليه يفتح نافذة فيها التلاتة اختيارات واضحين.
+    </p>
+    <div class="stage">
+      <div class="pillA">
+        <div class="stack">
+          <span>x₂</span><span>x²</span><span>a/b</span>
+        </div>
+        <div class="label">رياضيات</div>
+        <div class="glyph">π</div>
+      </div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+      <div class="symrow-label">شريط الرموز زي ما هو تحت الزرار</div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT B ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">2</div>
+      <p class="concept-title">الشارة الدائرية (Hub Badge)</p>
+    </div>
+    <p class="concept-desc">
+      دائرة كبيرة شبه FAB، الـ π في النص بحجم واضح، وحوالين حافتها 3 دوائر صغيرة ملوّنة (تدور زي القمر الصناعي) بترمز
+      لكسر/أس/دليل سفلي — إحساس "هَب" بيجمع كل الأدوات. مناسبة لو عايزها تطلع شوية برّه صف الأزرار العادي كعنصر مميز
+      لوحده فوق شريط الرموز.
+    </p>
+    <div class="stage">
+      <div class="hubRow">
+        <div class="hubB">
+          <div class="glyph">π</div>
+          <div class="orbit o1">a/b</div>
+          <div class="orbit o2">x₂</div>
+          <div class="orbit o3">x²</div>
+        </div>
+      </div>
+      <div class="hubB-label" style="margin-bottom:14px;">رياضيات</div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT C ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">3</div>
+      <p class="concept-title">الكبسولة المقسّمة (Segmented Capsule)</p>
+    </div>
+    <p class="concept-desc">
+      زرار واحد شكله مستطيل بحواف دائرية، مقسوم بخط رفيع لمنطقتين: يمين أكبر فيها الـ π (المنطقة الأساسية اللي بتفتح
+      القائمة)، وشمال أضيق فيها عمود صغير من التلاتة رموز (a/b، x²، x₂) كمعاينة ثابتة. كله زرار واحد قابل للدوس —
+      حل وسط بين البساطة والوضوح إن جواه أكتر من أداة.
+    </p>
+    <div class="stage">
+      <div class="capC">
+        <div class="mini">
+          <div class="m m1">a/b</div>
+          <div class="m m2">x²</div>
+          <div class="m m3">x₂</div>
+        </div>
+        <div class="divider"></div>
+        <div class="main">
+          <div class="label">رياضيات</div>
+          <div class="glyph">π</div>
+        </div>
+      </div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONCEPT D ================= -->
+  <div class="concept">
+    <div class="concept-head">
+      <div class="concept-num">4</div>
+      <p class="concept-title">التمدّد المكاني (Expand-in-Place)</p>
+    </div>
+    <p class="concept-desc">
+      مفيش نافذة منبثقة خالص — الزرار الواحد "رياضيات" بياخد مكان الأربعة كلهم وهو مقفول، ولما تدوس عليه هو نفسه
+      بيتمدّد (أنيميشن بسيط) لثلاث خانات صغيرة جوه نفس المساحة: كسر / أس / دليل سفلي، بألوانهم المعتادة. دوسة تانية
+      على أي منهم تفتح نافذته العادية. الشكل تحت بيوريك الحالتين: قبل الدوس وبعده.
+    </p>
+    <div class="stage">
+      <div class="stateLabel">١) قبل الدوس — زرار واحد بس</div>
+      <div class="rowD">
+        <div class="btnD collapsedMath" style="flex:1;">
+          <div class="glyph">π</div>
+          <div class="label">رياضيات</div>
+        </div>
+      </div>
+      <div class="arrowNote">↓ دوسة واحدة ↓</div>
+      <div class="stateLabel">٢) بعد الدوس — يتمدّد لثلاثة</div>
+      <div class="rowD expanded">
+        <div class="btnD frac">
+          <div class="label">كسر</div>
+        </div>
+        <div class="btnD exp">
+          <div class="label">أُس</div>
+        </div>
+        <div class="btnD sub">
+          <div class="label">دليل سفلي</div>
+        </div>
+      </div>
+      <div class="symrow">
+        <div class="symgroup"><div class="symchip">√</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">π</div><div class="symchip">θ</div><div class="symchip">α</div><div class="symchip">β</div><div class="symchip">Δ</div><div class="symchip">Ω</div><div class="symchip">μ</div></div>
+        <div class="symdiv"></div>
+        <div class="symgroup"><div class="symchip">×</div><div class="symchip">÷</div><div class="symchip">±</div><div class="symchip">°</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="concept" style="background:transparent;border-style:dashed;">
+    <p class="concept-desc" style="margin:0;">
+      <span class="tag">رأيي</span>
+      الفكرة ١ (الكبسولة المتدرّجة) أوضح حل — بتاخد نفس ارتفاع الزرار العادي (مفيش تكبير في المساحة)، وبتوريك من
+      أول نظرة إن جواها أكتر من أداة من غير ما تحتاج تدوس عليها، وسهلة التنفيذ من غير أنيميشن معقد. الفكرة ٤ أحلى
+      تفاعليًا لكن تحتاج شغل أكتر (أنيميشن + إدارة حالة "مفتوح/مقفول"). قولّي رأيك في أي فكرة عايز نمشي بيها.
+    </p>
+  </div>
+</div>
+</body>
+</html>

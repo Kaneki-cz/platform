@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -13,7 +14,7 @@ import {
 } from 'react-native';
 
 import { MathText, toSubUnicode, toSupUnicode } from '@/components/MathText';
-import { colors, fonts, radius, spacing } from '@/constants/theme';
+import { colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
 
 // Persists which plain symbols (Greek letters, operators, …) get tapped
 // most, so the "الأكتر استخدامًا" quick row can surface them without
@@ -163,6 +164,59 @@ function convertRaised(mode: 'sup' | 'sub', raw: string): string {
   return mode === 'sup' ? `⁽${raw}⁾` : `₍${raw}₎`;
 }
 
+/**
+ * Single entry point that replaces the four separate action buttons
+ * (Math/Fraction/Exponent/Subscript) that used to always sit above a field
+ * — since fraction/exponent/subscript are all "math" tools to begin with,
+ * one wide gradient pill now stands in for all four, and tapping it reveals
+ * the exact same four buttons underneath (unchanged — see the `actionsRow`
+ * this toggles in both MathSymbolInput and useSharedMathToolbar) instead of
+ * showing them all the time. Purely a visual/entry-point consolidation: no
+ * existing modal, insertion logic, or icon changed, only how you get to
+ * them.
+ *
+ * The three small badges (a/b, x², x₂) preview what's inside without
+ * needing to tap first, and the chevron flips to show open/closed state.
+ * Uses the app's own signature brand gradient (colors.gradientBrand, same
+ * one used for primary CTAs elsewhere) so this reads as a first-class,
+ * distinct control rather than a fifth plain square button. */
+function MathToolsPill({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Pressable onPress={onToggle} style={styles.mathPillWrap}>
+      {({ pressed }) => (
+        <LinearGradient
+          colors={gradientBrand}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.mathPill, pressed && styles.pressedScale]}
+        >
+          <View style={styles.mathPillIconChip}>
+            <Text style={styles.mathPillIconGlyph}>π</Text>
+          </View>
+          <View style={styles.mathPillTextCol}>
+            <Text style={styles.mathPillLabel}>رياضيات</Text>
+            <Text style={styles.mathPillSub} numberOfLines={1}>
+              كسر · أُس · دليل سفلي
+            </Text>
+          </View>
+          <View style={styles.mathPillStack}>
+            <View style={[styles.mathPillMini, { marginStart: 0, borderColor: colors.accent }]}>
+              <Text style={[styles.mathPillMiniText, { color: colors.accent }]}>a/b</Text>
+            </View>
+            <View style={[styles.mathPillMini, { borderColor: colors.violet }]}>
+              <Text style={[styles.mathPillMiniText, { color: colors.violet }]}>x²</Text>
+            </View>
+            <View style={[styles.mathPillMini, { borderColor: colors.success }]}>
+              <Text style={[styles.mathPillMiniText, { color: colors.success }]}>x₂</Text>
+            </View>
+          </View>
+          <Text style={styles.mathPillChevron}>{open ? '▴' : '▾'}</Text>
+        </LinearGradient>
+      )}
+    </Pressable>
+  );
+}
+
 interface MathSymbolInputProps extends Omit<TextInputProps, 'onChangeText' | 'value'> {
   value: string;
   onChangeText: (text: string) => void;
@@ -176,6 +230,11 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
   // it's the one being typed into — composed with whatever onFocus/onBlur
   // the caller passes via `rest`, rather than overriding them.
   const [mainFocused, setMainFocused] = useState(false);
+
+  // Whether the four action buttons are currently revealed under the
+  // MathToolsPill — see that component's own comment. Closes itself the
+  // moment one of the four is actually tapped (see the actionsRow below).
+  const [mathMenuOpen, setMathMenuOpen] = useState(false);
 
   // Per-symbol tap counts, loaded once from expo-secure-store and re-saved
   // on every tap — see SYMBOL_USAGE_KEY above. quickSymbols (used in the
@@ -476,47 +535,59 @@ export function MathSymbolInput({ value, onChangeText, style, ...rest }: MathSym
         </Pressable>
       ) : null}
 
-      {/* Actions: the four things that change how a whole chunk of text is
-          treated, not a single inserted character — each gets its own
-          accent color (from the app's existing palette) so they're
-          distinguishable at a glance instead of four identical tinted
-          squares, and the fraction/exponent/subscript glyphs are now a
-          miniature real preview / proper icon rather than a plain text
-          approximation. */}
-      <View style={styles.actionsRow}>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
-          onPress={openEqModal}
-        >
-          <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
-          <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
-          onPress={() => openFracModal('main')}
-        >
-          <View style={styles.miniFrac}>
-            <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
-            <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
-            <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
-          </View>
-          <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
-          onPress={() => openExpModal('sup')}
-        >
-          <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
-          <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
-          onPress={() => openExpModal('sub')}
-        >
-          <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
-          <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
-        </Pressable>
-      </View>
+      {/* Single entry point for the four "change a whole chunk of text"
+          tools — see MathToolsPill's own comment. Tapping it reveals the
+          exact same four buttons as before (unchanged styles/icons/colors),
+          each closing the pill back up once tapped. */}
+      <MathToolsPill open={mathMenuOpen} onToggle={() => setMathMenuOpen((v) => !v)} />
+      {mathMenuOpen ? (
+        <View style={styles.actionsRow}>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openEqModal();
+            }}
+          >
+            <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
+            <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openFracModal('main');
+            }}
+          >
+            <View style={styles.miniFrac}>
+              <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
+              <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
+              <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
+            </View>
+            <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openExpModal('sup');
+            }}
+          >
+            <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
+            <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openExpModal('sub');
+            }}
+          >
+            <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
+            <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* Quick row — the 4 symbols this admin actually reaches for most
           (tracked across every question they've written, see
@@ -874,6 +945,10 @@ export function useSharedMathToolbar(
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const inputRefs = useRef<Record<string, TextInput | null>>({});
 
+  // Whether the four action buttons are currently revealed under this
+  // group's own MathToolsPill — see that component's own comment.
+  const [mathMenuOpen, setMathMenuOpen] = useState(false);
+
   const currentValue = activeKey ? values[activeKey] ?? '' : '';
   const setCurrentValue = (v: string) => {
     if (activeKey) onChange(activeKey, v);
@@ -1075,40 +1150,55 @@ export function useSharedMathToolbar(
         </Pressable>
       ) : null}
 
-      <View style={styles.actionsRow}>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
-          onPress={openEqModal}
-        >
-          <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
-          <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
-          onPress={openFracModal}
-        >
-          <View style={styles.miniFrac}>
-            <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
-            <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
-            <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
-          </View>
-          <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
-          onPress={() => openExpModal('sup')}
-        >
-          <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
-          <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
-          onPress={() => openExpModal('sub')}
-        >
-          <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
-          <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
-        </Pressable>
-      </View>
+      <MathToolsPill open={mathMenuOpen} onToggle={() => setMathMenuOpen((v) => !v)} />
+      {mathMenuOpen ? (
+        <View style={styles.actionsRow}>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonMath, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openEqModal();
+            }}
+          >
+            <Text style={[styles.actionButtonGlyph, { color: colors.primary, fontStyle: 'italic' }]}>π</Text>
+            <Text style={[styles.actionButtonLabel, { color: colors.primary }]}>رياضيات</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonFrac, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openFracModal();
+            }}
+          >
+            <View style={styles.miniFrac}>
+              <Text style={[styles.miniFracText, { color: colors.accent }]}>a</Text>
+              <View style={[styles.miniFracBar, { backgroundColor: colors.accent }]} />
+              <Text style={[styles.miniFracText, { color: colors.accent }]}>b</Text>
+            </View>
+            <Text style={[styles.actionButtonLabel, { color: colors.accent }]}>كسر</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonExp, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openExpModal('sup');
+            }}
+          >
+            <MaterialCommunityIcons name="format-superscript" size={19} color={colors.violet} />
+            <Text style={[styles.actionButtonLabel, { color: colors.violet }]}>أُس</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, styles.actionButtonSub, pressed && styles.pressedScale]}
+            onPress={() => {
+              setMathMenuOpen(false);
+              openExpModal('sub');
+            }}
+          >
+            <MaterialCommunityIcons name="format-subscript" size={19} color={colors.success} />
+            <Text style={[styles.actionButtonLabel, { color: colors.success }]}>دليل سفلي</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {quickSymbols.length > 0 ? (
         <View style={styles.quickRow}>
@@ -1382,6 +1472,45 @@ const styles = StyleSheet.create({
   },
   undoArrow: { color: colors.primary, fontSize: 13 },
   undoText: { color: colors.textMuted, fontSize: 11, fontFamily: fonts.medium },
+
+  // MathToolsPill — the single entry point that replaced the four always-
+  // visible action buttons. Uses the app's own signature brand gradient
+  // (see constants/theme.ts's gradientBrand) so it reads as a distinct,
+  // first-class control rather than a fifth plain square button.
+  mathPillWrap: { marginBottom: spacing.xs },
+  mathPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  mathPillIconChip: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    backgroundColor: colors.onPrimary + 'D9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mathPillIconGlyph: { fontSize: 16, fontFamily: fonts.serifBold, fontStyle: 'italic', color: colors.primary },
+  mathPillTextCol: { flex: 1 },
+  mathPillLabel: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 13 },
+  mathPillSub: { color: colors.onPrimary + 'B3', fontFamily: fonts.medium, fontSize: 9.5, marginTop: 1 },
+  mathPillStack: { flexDirection: 'row' },
+  mathPillMini: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 2,
+    marginStart: -8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mathPillMiniText: { fontSize: 8.5, fontFamily: fonts.bold },
+  mathPillChevron: { color: colors.onPrimary + '8C', fontSize: 11, marginStart: 6 },
 
   actionsRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
   actionButton: {
