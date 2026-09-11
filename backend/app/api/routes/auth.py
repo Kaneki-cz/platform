@@ -36,25 +36,32 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    # settings.REQUIRE_EMAIL_VERIFICATION is a kill switch (see config.py) —
+    # while it's False, skip issuing/sending a code entirely and create the
+    # account already verified, so the mobile app can log the student in
+    # right away instead of stranding them on a verify screen with no code
+    # coming.
     user = User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
-        is_verified=False,
+        is_verified=not settings.REQUIRE_EMAIL_VERIFICATION,
     )
-    code = _issue_new_code(user)
+    if settings.REQUIRE_EMAIL_VERIFICATION:
+        code = _issue_new_code(user)
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    try:
-        send_verification_email(user.email, code, user.full_name)
-    except Exception:
-        # Registration itself still succeeds even if the email fails to go
-        # out (bad SMTP creds, provider hiccup, ...) — the student can always
-        # retry via /resend-verification once the problem's fixed, rather
-        # than losing the account they just created.
-        logger.exception("Failed to send verification email to %s", user.email)
+    if settings.REQUIRE_EMAIL_VERIFICATION:
+        try:
+            send_verification_email(user.email, code, user.full_name)
+        except Exception:
+            # Registration itself still succeeds even if the email fails to go
+            # out (bad SMTP creds, provider hiccup, ...) — the student can always
+            # retry via /resend-verification once the problem's fixed, rather
+            # than losing the account they just created.
+            logger.exception("Failed to send verification email to %s", user.email)
 
     return user
 
@@ -131,11 +138,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    if not user.is_verified:
+    if settings.REQUIRE_EMAIL_VERIFICATION and not user.is_verified:
         # A distinct status code (403, not 401) so the mobile app can tell
         # "wrong password" apart from "right password, just not verified yet"
         # and route to the verify-email screen instead of showing a plain
-        # error — see mobile/app/(auth)/login.tsx.
+        # error — see mobile/app/(auth)/login.tsx. Gated on the kill switch
+        # too: with verification disabled, an account that got stuck
+        # unverified during the SMTP outage (created before the switch was
+        # flipped) can still log in instead of being permanently stranded.
         raise HTTPException(status_code=403, detail="Email not verified")
 
     access_token = create_access_token(subject=str(user.id))

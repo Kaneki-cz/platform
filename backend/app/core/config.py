@@ -132,6 +132,21 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "منصة الفيزياء"
 
+    # Kill switch for the whole email-verification gate — added 2026-09-11
+    # after Gmail started rejecting our SMTP login (534 5.7.9
+    # WebLoginRequired) and locked every new student out of registering.
+    # False means: /register creates the account already verified (no code
+    # issued, no email attempted) and /login stops checking is_verified at
+    # all — so accounts that got stuck unverified during an SMTP outage can
+    # log in immediately too, not just new ones. Left as True by default:
+    # the actual SMTP problem got fixed by switching to a different Gmail
+    # account (see SMTP_* below), not by disabling verification — this flag
+    # is just kept in place as a fast, no-deploy-needed escape hatch (flip
+    # to false in .env, restart) if SMTP breaks again in the future. No
+    # other code needs to change either way — see auth.py's
+    # register()/login().
+    REQUIRE_EMAIL_VERIFICATION: bool = True
+
     # Minutes a verification code stays valid before the student must
     # request a new one.
     VERIFICATION_CODE_EXPIRE_MINUTES: int = 10

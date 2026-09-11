@@ -44,8 +44,12 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       const trimmedEmail = email.trim();
-      await register(trimmedEmail, password, fullName.trim() || undefined);
-      router.push({ pathname: '/(auth)/verify-email', params: { email: trimmedEmail } });
+      const alreadyVerified = await register(trimmedEmail, password, fullName.trim() || undefined);
+      if (!alreadyVerified) {
+        router.push({ pathname: '/(auth)/verify-email', params: { email: trimmedEmail } });
+      }
+      // else: already logged in (see AuthContext.register) — AuthGate will
+      // redirect to (tabs) on its own, nothing to navigate here.
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.genericError);
     } finally {
