@@ -19,3 +19,11 @@ numpy==2.1.1
 httpx==0.27.2
 python-dotenv==1.0.1
 boto3==1.35.36
+# Gmail API (OAuth2) send path — see app/services/email_service.py and
+# app/core/config.py's GMAIL_OAUTH_* settings. google-auth-oauthlib is only
+# actually used by the one-time get_gmail_refresh_token.py helper (not at
+# app runtime) but is kept here too so that script can run from this same
+# venv without a separate install step.
+google-auth==2.58.0
+google-auth-oauthlib==1.4.1
+google-api-python-client==2.200.0

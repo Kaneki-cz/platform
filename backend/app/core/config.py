@@ -132,6 +132,22 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "منصة الفيزياء"
 
+    # Gmail API (OAuth2) — preferred send path once GMAIL_OAUTH_REFRESH_TOKEN
+    # is set (see email_service.py). Added 2026-09 after plain SMTP login to
+    # a Gmail account kept getting hit with "534 5.7.9 ... WebLoginRequired"
+    # / an account-wide "session expired" security check — that's specific
+    # to legacy SMTP-AUTH; the Gmail API with a real OAuth2 refresh token is
+    # Google's own sanctioned way for an app to send mail and isn't subject
+    # to the same "insecure sign-in" flagging. One-time setup: run
+    # backend/get_gmail_refresh_token.py once (see its own docstring) to get
+    # these three values — after that they never need to change. Sends
+    # "From" the same SMTP_FROM_EMAIL/SMTP_FROM_NAME above. Leave all three
+    # empty to keep using plain SMTP (SMTP_* above) instead — both paths
+    # stay supported, see email_service.py.
+    GMAIL_OAUTH_CLIENT_ID: str = ""
+    GMAIL_OAUTH_CLIENT_SECRET: str = ""
+    GMAIL_OAUTH_REFRESH_TOKEN: str = ""
+
     # Kill switch for the whole email-verification gate — added 2026-09-11
     # after Gmail started rejecting our SMTP login (534 5.7.9
     # WebLoginRequired) and locked every new student out of registering.
