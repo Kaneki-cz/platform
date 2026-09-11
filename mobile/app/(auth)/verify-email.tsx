@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, I18nManager, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -298,7 +298,18 @@ const styles = StyleSheet.create({
   },
   cardLabel: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginBottom: spacing.md },
 
-  digitsRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: spacing.sm },
+  // A verification code is always read/typed left-to-right (digit 1 first),
+  // regardless of the app's own language — unlike Arabic prose, digit
+  // strings aren't mirrored by convention. Plain 'row-reverse' here was a
+  // bug: on a device whose OS isn't itself set to an RTL language (the
+  // common case even for Arabic-speaking users, who often keep the system
+  // language English), that rendered the boxes right-to-left unconditionally,
+  // forcing you to start typing from the rightmost box and have the digits
+  // come out reversed. This instead cancels out RN's automatic row-mirroring
+  // under a genuinely RTL OS locale (I18nManager.isRTL), so the boxes render
+  // strictly left-to-right — box 0 (the first digit) always leftmost —
+  // whether the device itself is RTL or LTR.
+  digitsRow: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', justifyContent: 'center', gap: spacing.sm },
   digitBox: {
     width: 42,
     height: 52,
