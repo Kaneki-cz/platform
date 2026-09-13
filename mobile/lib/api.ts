@@ -33,6 +33,7 @@ import type {
   SubjectDetail,
   Teacher,
   TeacherCreateInput,
+  TeacherDashboard,
   TeacherUpdateInput,
   UsageInfo,
   User,
@@ -402,6 +403,15 @@ export function myManagedSubjects() {
  * now rather than a whole subject. */
 export function myManagedCourses() {
   return request<ManagedCourse[]>('/api/v1/courses/mine/managed');
+}
+
+/** Aggregated stats for the Teacher Dashboard screen — same chapter scoping
+ * as myManagedCourses above (every chapter for an admin, only the
+ * instructor's own linked chapters otherwise), rolled up into counts + exam
+ * performance server-side instead of a flat list the client would have to
+ * aggregate itself. */
+export function myDashboard() {
+  return request<TeacherDashboard>('/api/v1/courses/mine/dashboard');
 }
 
 // --- Courses & lessons --------------------------------------------------

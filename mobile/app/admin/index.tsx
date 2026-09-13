@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
+import { icons } from '@/lib/icons';
 import { subjectIconSource } from '@/lib/subjectIcon';
 import type { ManagedCourse, Subject } from '@/lib/types';
 
@@ -130,10 +131,23 @@ export default function AdminHomeScreen() {
         // teacher card automatically (see create-course.tsx and
         // backend/app/api/routes/courses.py's create_course), so there's no
         // subject/teacher picker here.
-        <Scalable style={styles.actionButton} onPress={() => router.push('/admin/create-course')}>
-          <Text style={styles.actionButtonIcon}>＋</Text>
-          <Text style={styles.actionButtonText}>New Chapter</Text>
-        </Scalable>
+        <>
+          <Scalable style={styles.actionButton} onPress={() => router.push('/admin/create-course')}>
+            <Text style={styles.actionButtonIcon}>＋</Text>
+            <Text style={styles.actionButtonText}>New Chapter</Text>
+          </Scalable>
+
+          <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/dashboard')}>
+            <View style={styles.utilityIconWrap}>
+              <Image source={icons.barChart} style={{ width: 20, height: 20, tintColor: colors.accent }} />
+            </View>
+            <View style={styles.utilityTextWrap}>
+              <Text style={styles.utilityTitle}>Dashboard</Text>
+              <Text style={styles.utilitySubtitle}>Exam performance & chapter overview</Text>
+            </View>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Scalable>
+        </>
       )}
 
       <View style={styles.sectionTitleRow}>

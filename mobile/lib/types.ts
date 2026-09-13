@@ -94,6 +94,32 @@ export interface ManagedCourse extends Course {
   subject_name: string;
 }
 
+// One chapter's row in the Teacher Dashboard's per-chapter performance list
+// (GET /api/v1/courses/mine/dashboard) — see lib/api.ts's myDashboard.
+// avg_score_percent/exam_attempt_count are 0/null for a chapter with no
+// completed exam attempts yet, so the screen can tell "no data yet" apart
+// from "0%".
+export interface DashboardChapter {
+  id: string;
+  title: string;
+  lecture_count: number;
+  exam_attempt_count: number;
+  avg_score_percent: number | null;
+}
+
+// Aggregated stats backing the Teacher Dashboard screen — same chapter
+// scoping as ManagedCourse above (every chapter for an admin, only the
+// instructor's own linked chapters otherwise), rolled up into counts + exam
+// performance. avg_score_percent/pass_rate_percent are null (not 0) when
+// nobody has completed a standalone exam yet in any managed chapter.
+export interface TeacherDashboard {
+  chapters_count: number;
+  lectures_count: number;
+  avg_score_percent: number | null;
+  pass_rate_percent: number | null;
+  chapters: DashboardChapter[];
+}
+
 export interface Lesson {
   id: string;
   title: string;
