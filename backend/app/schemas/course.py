@@ -153,7 +153,12 @@ class ManagedCourseOut(CourseOut):
 
 
 class CourseCreate(BaseModel):
-    subject_id: uuid.UUID
+    # Nullable because an instructor creating their own chapter never sends
+    # one — the server derives it from their linked TeacherProfile instead
+    # (see app/api/routes/courses.py's create_course). Still required in
+    # practice for an admin's request; enforced there, not by this schema,
+    # since which rule applies depends on the caller's role.
+    subject_id: uuid.UUID | None = None
     title: str
     description: str | None = None
     grade_level: GradeLevel | None = None

@@ -4,7 +4,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
@@ -235,14 +235,40 @@ def my_managed_courses(db: Session = Depends(get_db), current_user: User = Depen
 def create_course(
     payload: CourseCreate,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    current_user: User = Depends(require_instructor_or_admin),
 ) -> Course:
+    """Admins create a chapter "slot" under any subject and may assign it to
+    any teacher card (subject_id/teacher_id come straight from the request,
+    as before). An instructor can now also add their own chapters — but
+    scoped to their own linked teacher card: whatever subject_id/teacher_id
+    they send is ignored and replaced with the subject/teacher of their own
+    TeacherProfile (see app/models/teacher.py's user_id), so they can never
+    file a chapter under someone else's teacher card or a subject they have
+    no card in. An instructor with no linked teacher card yet (nobody has
+    linked their account — see app/api/routes/teachers.py's
+    link_teacher_account) gets a 403 telling them to ask an admin first,
+    same spirit as ensure_can_manage_course's error in app/api/deps.py."""
+    subject_id = payload.subject_id
+    teacher_id = payload.teacher_id
+
+    if current_user.role == UserRole.instructor:
+        profile = db.query(TeacherProfile).filter(TeacherProfile.user_id == current_user.id).first()
+        if not profile:
+            raise HTTPException(
+                status_code=403,
+                detail="Your account isn't linked to a teacher card yet — ask an admin to link it first.",
+            )
+        subject_id = profile.subject_id
+        teacher_id = profile.id
+    elif subject_id is None:
+        raise HTTPException(status_code=400, detail="subject_id is required")
+
     course = Course(
-        subject_id=payload.subject_id,
+        subject_id=subject_id,
         title=payload.title,
         description=payload.description,
         grade_level=payload.grade_level,
-        teacher_id=payload.teacher_id,
+        teacher_id=teacher_id,
         cover_image_url=payload.cover_image_url,
         order_index=payload.order_index,
     )
