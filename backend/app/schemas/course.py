@@ -166,6 +166,24 @@ class DashboardChapterOut(BaseModel):
     avg_score_percent: float | None = None
 
 
+class VideoActivityOut(BaseModel):
+    """Real watch-activity rollup for the Teacher Dashboard's "نشاط المشاهدة"
+    section — built entirely from LessonProgress.completion_percent, which
+    the mobile app already reports on every ~10-point step of playback (see
+    PUT /api/v1/progress, called from app/lessons/[id].tsx's onVideoProgress
+    — monotonic, so it only ever tracks the furthest point a student
+    actually reached). Nothing here is mocked, and there's no separate
+    skip-tracking column: "watched vs skipped" is read straight off how far
+    each completion_percent value got. See TeacherDashboardOut.video_activity
+    for when this is None entirely (nobody has watched anything yet)."""
+
+    watched_lessons_count: int
+    total_views: int
+    avg_completion_percent: float
+    completed_views_count: int
+    low_completion_views_count: int
+
+
 class TeacherDashboardOut(BaseModel):
     """Aggregated stats backing the Teacher Dashboard screen — same chapter
     scoping as GET /api/v1/courses/mine/managed (every chapter for an admin,
@@ -179,6 +197,10 @@ class TeacherDashboardOut(BaseModel):
     avg_score_percent: float | None = None
     pass_rate_percent: float | None = None
     chapters: list[DashboardChapterOut] = []
+    # None when no student has recorded any watch progress yet in any
+    # managed chapter — lets the mobile screen show a real "no data yet"
+    # state instead of a misleading 0%.
+    video_activity: VideoActivityOut | None = None
 
 
 class CourseCreate(BaseModel):

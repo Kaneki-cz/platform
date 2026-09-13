@@ -25,6 +25,7 @@ from app.schemas.course import (
     ExamSummaryOut,
     ManagedCourseOut,
     TeacherDashboardOut,
+    VideoActivityOut,
 )
 from app.services import b2_storage
 
@@ -38,6 +39,14 @@ router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 # this is the version that actually gates whether the *next* lesson is
 # reachable at all (see LessonOut.quiz_passed below).
 PASS_THRESHOLD = 0.75
+
+# Thresholds for the Teacher Dashboard's video-activity rollup (see
+# my_dashboard below) — a view counts as "completed" once it reached this
+# far, and as "low completion" (skipped most of it) below this far. Purely
+# a dashboard read of LessonProgress.completion_percent; not enforced
+# anywhere else.
+VIDEO_COMPLETED_THRESHOLD = 90
+VIDEO_LOW_COMPLETION_THRESHOLD = 50
 
 
 @router.get("", response_model=list[CourseOut])
@@ -318,12 +327,41 @@ def my_dashboard(
             total_passed += passed_count
             score_weighted_sum += (avg_score or 0.0) * attempt_count
 
+    # Video-activity rollup — real numbers straight off LessonProgress rows
+    # for lessons in the managed chapters (see VideoActivityOut). One row per
+    # (student, lesson) pair; a lesson/course with no LessonProgress rows at
+    # all (nobody's opened a video yet) simply leaves video_activity as None.
+    video_activity: VideoActivityOut | None = None
+    if course_ids:
+        agg = (
+            db.query(
+                func.count(LessonProgress.id),
+                func.count(func.distinct(LessonProgress.lesson_id)),
+                func.avg(LessonProgress.completion_percent),
+                func.sum(case((LessonProgress.completion_percent >= VIDEO_COMPLETED_THRESHOLD, 1), else_=0)),
+                func.sum(case((LessonProgress.completion_percent < VIDEO_LOW_COMPLETION_THRESHOLD, 1), else_=0)),
+            )
+            .join(Lesson, Lesson.id == LessonProgress.lesson_id)
+            .filter(Lesson.course_id.in_(course_ids))
+            .first()
+        )
+        total_views, watched_lessons_count, avg_completion, completed_count, low_count = agg
+        if total_views:
+            video_activity = VideoActivityOut(
+                watched_lessons_count=watched_lessons_count or 0,
+                total_views=total_views,
+                avg_completion_percent=float(avg_completion) if avg_completion is not None else 0.0,
+                completed_views_count=completed_count or 0,
+                low_completion_views_count=low_count or 0,
+            )
+
     return TeacherDashboardOut(
         chapters_count=len(courses),
         lectures_count=sum(lecture_counts.values()),
         avg_score_percent=(score_weighted_sum / total_attempts) if total_attempts else None,
         pass_rate_percent=(total_passed / total_attempts * 100) if total_attempts else None,
         chapters=chapters_out,
+        video_activity=video_activity,
     )
 
 
