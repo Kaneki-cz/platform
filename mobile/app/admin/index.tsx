@@ -59,18 +59,26 @@ export default function AdminHomeScreen() {
             {/* Gradient primary action (2026 redesign pass) — was two flat
                 same-color rectangles; the gradient now marks which action is
                 primary at a glance.
-                Layout note: <Pressable> itself now owns the real size
-                (flex:1 + minHeight — it's the row's direct flex child, so
-                this is guaranteed to work, unlike flex:1 on something
-                nested two levels down). <LinearGradient> is purely a visual
-                fill absolutely stacked behind the label — it contributes
-                nothing to sizing, so it can't come out the wrong size no
-                matter what. The label is a plain sibling <Text>, not a
-                child of <LinearGradient>, because on at least one device
-                text rendered as a direct child of <LinearGradient> came out
-                fully invisible even with an unmistakable color — a plain
-                sibling stacked on top by ordinary z-order sidesteps that
-                regardless of its actual cause. */}
+                Layout note: previous attempts gave <Pressable> `flex: 1`
+                while `adminActions` was still a `flexDirection: 'row'` with
+                only ONE item left in it (the "Manage Instructors" sibling
+                button was removed earlier this project) — a lone flex-grow
+                item inside a row whose own width isn't otherwise pinned
+                down is exactly the kind of case where different RN/Yoga
+                versions resolve width differently, which likely explains
+                why this kept coming out the wrong size. Removed that
+                ambiguity entirely: `adminActions` is now a plain block
+                container (no flexDirection/gap to compute), and <Pressable>
+                gets an explicit `width: '100%'` — nothing here depends on
+                flex-grow resolving through a chain of nested components.
+                <LinearGradient> is purely a visual fill absolutely stacked
+                behind the label, contributing nothing to sizing. The label
+                is a plain sibling <Text>, not a child of <LinearGradient>,
+                because on at least one device text rendered as a direct
+                child of <LinearGradient> came out fully invisible even with
+                an unmistakable color — a plain sibling stacked on top by
+                ordinary z-order sidesteps that regardless of its actual
+                cause. */}
             <Pressable
               onPress={() => router.push('/admin/create-subject')}
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -174,15 +182,19 @@ export default function AdminHomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl },
-  adminActions: { flexDirection: 'row', gap: 10, marginBottom: spacing.sm },
+  // Plain block container — was `flexDirection: 'row'` back when it held
+  // two buttons side by side; only one is left now (see the JSX comment
+  // above), and keeping it a row was the source of the sizing ambiguity.
+  adminActions: { marginBottom: spacing.sm },
   actionButton: {
-    // This is the Pressable itself — the row's direct flex child — so its
-    // size is fully self-determined (flex:1 + minHeight) and never depends
-    // on what's rendered inside it. See the JSX comment above.
+    // Explicit width, not flex:1 — this is the Pressable itself, so its
+    // size is fully self-determined and never depends on what's rendered
+    // inside it, or on how a flex-grow item resolves inside a row. See the
+    // JSX comment above.
+    width: '100%',
     borderRadius: radius.pill,
     minHeight: 48,
     paddingHorizontal: 16,
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
