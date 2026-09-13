@@ -25,6 +25,7 @@ import {
   deleteTeacher,
   getSubject,
   linkTeacherAccount,
+  listAllUsers,
   listTeachers,
   unlinkTeacherAccount,
   updateCourse,
@@ -32,7 +33,7 @@ import {
   uploadImage,
 } from '@/lib/api';
 import { colors, radius, spacing } from '@/constants/theme';
-import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher } from '@/lib/types';
+import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher, type User } from '@/lib/types';
 
 // width/height come straight from the picker's own asset — see
 // ImageCropModal's initialSize prop for why we pass these through instead
@@ -59,6 +60,14 @@ export default function ManageSubjectScreen() {
   const [teacherLinkEmail, setTeacherLinkEmail] = useState('');
   const [teacherLinkError, setTeacherLinkError] = useState<string | null>(null);
   const [teacherLinkSubmitting, setTeacherLinkSubmitting] = useState(false);
+  // Every registered account, fetched once so the email field below can
+  // suggest matches locally as the admin types instead of round-tripping to
+  // the server on every keystroke. `emailSuggestionsDismissed` hides the
+  // dropdown right after a suggestion is tapped (or the field is cleared)
+  // without touching teacherLinkEmail itself, since the just-picked email
+  // would otherwise still match its own substring and reopen the list.
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [emailSuggestionsDismissed, setEmailSuggestionsDismissed] = useState(false);
 
   // --- Chapter form state -----------------------------------------------
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,6 +90,13 @@ export default function ManageSubjectScreen() {
   }, [id]);
 
   useFocusEffect(load);
+
+  // Loaded once — not re-fetched on every focus like `load()` above, since
+  // the account list rarely changes within one admin session and this is
+  // only ever used for the link-by-email suggestions below.
+  React.useEffect(() => {
+    listAllUsers().then(setAllUsers).catch(() => {});
+  }, []);
 
   // --- Photo picking (shared by teacher photo + chapter cover) ----------
   const pickRawImage = async (kind: 'teacher' | 'cover') => {
@@ -136,6 +152,7 @@ export default function ManageSubjectScreen() {
     setTeacherError(null);
     setTeacherLinkEmail('');
     setTeacherLinkError(null);
+    setEmailSuggestionsDismissed(false);
   };
 
   const onEditTeacher = (teacher: Teacher) => {
@@ -146,6 +163,7 @@ export default function ManageSubjectScreen() {
     setTeacherError(null);
     setTeacherLinkEmail('');
     setTeacherLinkError(null);
+    setEmailSuggestionsDismissed(false);
     // Tapping a teacher card also scopes the Chapters section below to just
     // their chapters (see visibleCourses) — and, as long as we're not in the
     // middle of editing some other chapter already, pre-selects them in the
@@ -319,6 +337,29 @@ export default function ManageSubjectScreen() {
   // the instructor-account linking section, which only makes sense while
   // editing (not while still filling in the "Add a teacher" form).
   const editingTeacher = filterTeacher;
+
+  // Local email autocomplete for the "link account" field below — matches
+  // anywhere in the email (not just the start), since an admin might
+  // remember the school domain part more easily than the name prefix.
+  // Accounts already linked to a DIFFERENT teacher card in this subject are
+  // excluded, since attempting to link them again would just fail on the
+  // server with "already linked to a different teacher profile".
+  const emailQuery = teacherLinkEmail.trim().toLowerCase();
+  const otherLinkedUserIds = new Set(
+    teachers.filter((t) => t.id !== teacherEditingId && t.user_id).map((t) => t.user_id as string),
+  );
+  const emailSuggestions =
+    !emailSuggestionsDismissed && emailQuery.length > 0
+      ? allUsers
+          .filter((u) => u.email.toLowerCase().includes(emailQuery) && !otherLinkedUserIds.has(u.id))
+          .slice(0, 6)
+      : [];
+
+  const onSelectEmailSuggestion = (u: User) => {
+    setTeacherLinkEmail(u.email);
+    setEmailSuggestionsDismissed(true);
+  };
+
   const visibleCourses = filterTeacher
     ? subject.courses.filter((c) => c.teacher_id === filterTeacher.id)
     : subject.courses;
@@ -418,8 +459,29 @@ export default function ManageSubjectScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 value={teacherLinkEmail}
-                onChangeText={setTeacherLinkEmail}
+                onChangeText={(t) => {
+                  setTeacherLinkEmail(t);
+                  setEmailSuggestionsDismissed(false);
+                }}
               />
+              {emailSuggestions.length > 0 ? (
+                <View style={styles.suggestionsBox}>
+                  {emailSuggestions.map((u, index) => (
+                    <Pressable
+                      key={u.id}
+                      style={[styles.suggestionRow, index === emailSuggestions.length - 1 && styles.suggestionRowLast]}
+                      onPress={() => onSelectEmailSuggestion(u)}
+                    >
+                      <Text style={styles.suggestionName} numberOfLines={1}>
+                        {u.full_name || 'بدون اسم'}
+                      </Text>
+                      <Text style={styles.suggestionEmail} numberOfLines={1}>
+                        {u.email}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
               <Pressable style={styles.button} onPress={onLinkTeacher} disabled={teacherLinkSubmitting}>
                 {teacherLinkSubmitting ? (
                   <ActivityIndicator color={colors.onPrimary} />
@@ -669,6 +731,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   linkedText: { color: colors.success, fontWeight: '600', fontSize: 14, marginBottom: 4 },
+  suggestionsBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    marginTop: -4,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  suggestionRowLast: { borderBottomWidth: 0 },
+  suggestionName: { color: colors.text, fontWeight: '600', fontSize: 14 },
+  suggestionEmail: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
   unlinkButton: {
     borderWidth: 1,
     borderColor: colors.danger + '55',
