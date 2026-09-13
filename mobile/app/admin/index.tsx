@@ -5,7 +5,7 @@ import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native
 
 import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { cardShadow, colors, gradientBrand, radius, spacing } from '@/constants/theme';
+import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
 import type { ManagedCourse, Subject } from '@/lib/types';
 
 export default function AdminHomeScreen() {
@@ -170,7 +170,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionButtonPressed: { opacity: 0.85 },
-  actionButtonText: { color: colors.onPrimary, fontWeight: '600', textAlign: 'center' },
+  // Explicit fontSize/fontFamily here (rather than relying on RN's host
+  // default + the app-wide Cairo default in app/_layout.tsx) — a Text with
+  // its own `style` prop never picks up that global default in the first
+  // place, and this button was the one place in the admin screens missing
+  // an explicit size, so give it the same treatment every other button
+  // label in the app already has.
+  actionButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', fontFamily: fonts.bold },
   secondaryButton: {
     flex: 1,
     borderRadius: radius.pill,
