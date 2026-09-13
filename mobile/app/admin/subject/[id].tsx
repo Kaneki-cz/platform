@@ -33,7 +33,7 @@ import {
   uploadImage,
 } from '@/lib/api';
 import { colors, radius, spacing } from '@/constants/theme';
-import { subjectIcon } from '@/lib/subjectIcon';
+import { subjectIconSource } from '@/lib/subjectIcon';
 import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher, type User } from '@/lib/types';
 
 // width/height come straight from the picker's own asset — see
@@ -518,7 +518,7 @@ export default function ManageSubjectScreen() {
               containerStyle={styles.chapterCover}
               fallback={
                 <View style={[styles.chapterCover, styles.photoPlaceholder]}>
-                  <Text style={styles.photoPlaceholderText}>{subjectIcon(subject.name)}</Text>
+                  <Image source={subjectIconSource(subject.name)} style={styles.subjectIconFallback} />
                 </View>
               }
             />
@@ -683,6 +683,10 @@ const styles = StyleSheet.create({
   chapterCover: { width: '100%', height: 84, borderRadius: radius.sm, marginBottom: spacing.xs, backgroundColor: colors.surfaceAlt },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   photoPlaceholderText: { fontSize: 22 },
+  // Direction-B icon badge already bakes in its own colored background —
+  // sized a bit smaller than the full chapterCover fallback box so it reads
+  // as a centered badge rather than stretching edge-to-edge.
+  subjectIconFallback: { width: 40, height: 40 },
   cardName: { fontSize: 13, fontWeight: '600', color: colors.text, textAlign: 'center' },
   cardMeta: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   chapterCardActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },

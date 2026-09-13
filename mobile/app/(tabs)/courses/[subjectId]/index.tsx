@@ -1,13 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { getSubject, listTeachers } from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, radius, spacing } from '@/constants/theme';
-import { subjectIcon } from '@/lib/subjectIcon';
+import { subjectIconSource } from '@/lib/subjectIcon';
 import { GRADE_LEVELS, type Course, type GradeLevel, type SubjectDetail, type Teacher } from '@/lib/types';
 
 // Shared brand-gradient stops (cyan -> violet, see constants/theme.ts) reused
@@ -221,7 +221,7 @@ function CourseGrid({
               resizeMode="contain"
               fallback={
                 <View style={[styles.courseCover, styles.photoPlaceholder]}>
-                  <Text style={styles.photoPlaceholderText}>{subjectIcon(subject.name)}</Text>
+                  <Image source={subjectIconSource(subject.name)} style={styles.subjectIconFallback} />
                 </View>
               }
             />
@@ -337,6 +337,9 @@ const styles = StyleSheet.create({
   courseBadgeText: { color: colors.onPrimary, fontSize: 12, fontWeight: '700' },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   photoPlaceholderText: { fontSize: 24 },
+  // Direction-B icon badge already bakes in its own colored background —
+  // sized as a centered badge inside the full-bleed courseCover fallback box.
+  subjectIconFallback: { width: 44, height: 44 },
   courseTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
   courseDescription: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
 

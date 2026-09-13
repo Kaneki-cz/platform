@@ -1,21 +1,15 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
-import { subjectIcon } from '@/lib/subjectIcon';
+import { subjectIconSource } from '@/lib/subjectIcon';
 import type { ManagedCourse, Subject } from '@/lib/types';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-// Rotating per-row accent so a long subject list doesn't read as one flat
-// block — each subject's icon circle picks the next color in this list,
-// wrapping around. Colors come straight from the shared theme palette (no
-// new ones introduced) so this stays consistent with the rest of the app.
-const SUBJECT_ACCENTS = [colors.primary, colors.accent, colors.violet, colors.success];
 
 /** Redesign pass 2026-09 — replaces the earlier gradient "+ New Subject"
  * button, whose text repeatedly failed to render correctly on at least one
@@ -144,17 +138,12 @@ export default function AdminHomeScreen() {
         <FlatList
           data={subjects}
           keyExtractor={(s) => s.id}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <View style={styles.card}>
               <Scalable style={styles.cardMain} onPress={() => router.push(`/admin/subject/${item.id}`)}>
                 <View style={styles.cardMainLeft}>
-                  <View
-                    style={[
-                      styles.subjectIconWrap,
-                      { backgroundColor: SUBJECT_ACCENTS[index % SUBJECT_ACCENTS.length] + '26' },
-                    ]}
-                  >
-                    <Text style={styles.subjectIcon}>{subjectIcon(item.name)}</Text>
+                  <View style={styles.subjectIconWrap}>
+                    <Image source={subjectIconSource(item.name)} style={styles.subjectIconImage} />
                   </View>
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {item.name}
@@ -287,14 +276,15 @@ const styles = StyleSheet.create({
   },
   cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardMainLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  // No background tint here anymore — the Direction-B icon PNG already
+  // bakes in its own colored radial-gradient badge circle.
   subjectIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.pill,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  subjectIcon: { fontSize: 16 },
+  subjectIconImage: { width: 40, height: 40 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flexShrink: 1 },
   cardSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   cardArrow: { fontSize: 20, color: colors.textFaint, marginRight: 12 },
