@@ -16,6 +16,28 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 // new ones introduced) so this stays consistent with the rest of the app.
 const SUBJECT_ACCENTS = [colors.primary, colors.accent, colors.violet, colors.success];
 
+/** Subject has no icon field of its own (just id/name/order_index), so the
+ * icon is picked from the subject's own name — a keyword match against
+ * both the Arabic and English spellings admins actually use, with a plain
+ * book as the fallback for anything else (a new language, "Earth Science",
+ * whatever an admin names their next subject). This keeps working for
+ * subjects nobody has created yet, unlike hardcoding icons for today's
+ * three (Physics/Chemistry/Biology). */
+function subjectIcon(name: string): string {
+  const n = name.toLowerCase();
+  const has = (...keywords: string[]) => keywords.some((k) => n.includes(k));
+  if (has('physic', 'فيزياء', 'فيزيا')) return '⚛️';
+  if (has('chem', 'كيمياء', 'كيميا')) return '🧪';
+  if (has('bio', 'أحياء', 'احياء')) return '🧬';
+  if (has('math', 'رياضيات')) return '📐';
+  if (has('arabic', 'لغة عربية', 'عربي')) return '📖';
+  if (has('english', 'انجليز', 'إنجليز')) return '🔤';
+  if (has('geology', 'جيولوجيا')) return '🌋';
+  if (has('geography', 'جغرافيا')) return '🗺️';
+  if (has('history', 'تاريخ')) return '🏛️';
+  return '📚';
+}
+
 /** Redesign pass 2026-09 — replaces the earlier gradient "+ New Subject"
  * button, whose text repeatedly failed to render correctly on at least one
  * real device across several different structural attempts (LinearGradient
@@ -153,7 +175,7 @@ export default function AdminHomeScreen() {
                       { backgroundColor: SUBJECT_ACCENTS[index % SUBJECT_ACCENTS.length] + '26' },
                     ]}
                   >
-                    <Text style={styles.subjectIcon}>📘</Text>
+                    <Text style={styles.subjectIcon}>{subjectIcon(item.name)}</Text>
                   </View>
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {item.name}
@@ -222,7 +244,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.primary,
     marginBottom: spacing.lg,
-    ...cardShadow,
+    // A colored glow instead of the plain black cardShadow every other row
+    // uses — reads as the screen's one "lit up" element rather than just
+    // another flat card, without going back to a gradient fill.
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 10,
   },
   actionButtonIcon: { color: colors.onPrimary, fontSize: 18, fontWeight: '700', fontFamily: fonts.bold },
   actionButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16, fontFamily: fonts.bold },
