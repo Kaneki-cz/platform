@@ -1,12 +1,58 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
+import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import type { ManagedCourse, Subject } from '@/lib/types';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Rotating per-row accent so a long subject list doesn't read as one flat
+// block — each subject's icon circle picks the next color in this list,
+// wrapping around. Colors come straight from the shared theme palette (no
+// new ones introduced) so this stays consistent with the rest of the app.
+const SUBJECT_ACCENTS = [colors.primary, colors.accent, colors.violet, colors.success];
+
+/** Redesign pass 2026-09 — replaces the earlier gradient "+ New Subject"
+ * button, whose text repeatedly failed to render correctly on at least one
+ * real device across several different structural attempts (LinearGradient
+ * wrapping the label, the label as a sibling, various sizing strategies —
+ * see git history on this file). Rather than keep chasing that, this
+ * button (and every other tappable row on this screen) is now a plain
+ * solid-color surface with a small scale-down animation on press instead —
+ * simpler, and there's no gradient-rendering edge case left to hit. */
+function Scalable({
+  onPress,
+  style,
+  children,
+  disabled,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={() => {
+        scale.value = withTiming(0.97, { duration: 100 });
+      }}
+      onPressOut={() => {
+        scale.value = withTiming(1, { duration: 150 });
+      }}
+      style={[style, animatedStyle]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
 
 export default function AdminHomeScreen() {
   const { user } = useAuth();
@@ -55,86 +101,66 @@ export default function AdminHomeScreen() {
     <View style={styles.container}>
       {isAdmin ? (
         <>
-          <View style={styles.adminActions}>
-            {/* Gradient primary action (2026 redesign pass) — was two flat
-                same-color rectangles; the gradient now marks which action is
-                primary at a glance.
-                Layout note: previous attempts gave <Pressable> `flex: 1`
-                while `adminActions` was still a `flexDirection: 'row'` with
-                only ONE item left in it (the "Manage Instructors" sibling
-                button was removed earlier this project) — a lone flex-grow
-                item inside a row whose own width isn't otherwise pinned
-                down is exactly the kind of case where different RN/Yoga
-                versions resolve width differently, which likely explains
-                why this kept coming out the wrong size. Removed that
-                ambiguity entirely: `adminActions` is now a plain block
-                container (no flexDirection/gap to compute), and <Pressable>
-                gets an explicit `width: '100%'` — nothing here depends on
-                flex-grow resolving through a chain of nested components.
-                <LinearGradient> is purely a visual fill absolutely stacked
-                behind the label, contributing nothing to sizing. The label
-                is a plain sibling <Text>, not a child of <LinearGradient>,
-                because on at least one device text rendered as a direct
-                child of <LinearGradient> came out fully invisible even with
-                an unmistakable color — a plain sibling stacked on top by
-                ordinary z-order sidesteps that regardless of its actual
-                cause. */}
-            <Pressable
-              onPress={() => router.push('/admin/create-subject')}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-            >
-              <LinearGradient
-                colors={gradientBrand}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-              <Text style={styles.actionButtonText} pointerEvents="none">
-                + New Subject
-              </Text>
-            </Pressable>
-          </View>
-          <Pressable
-            style={({ pressed }) => [styles.aiLimitsCard, pressed && styles.aiLimitsCardPressed]}
-            onPress={() => router.push('/admin/users')}
-          >
-            <View style={styles.aiLimitsIconWrap}>
-              <Text style={styles.aiLimitsIcon}>🎚️</Text>
+          <Scalable style={styles.actionButton} onPress={() => router.push('/admin/create-subject')}>
+            <Text style={styles.actionButtonIcon}>＋</Text>
+            <Text style={styles.actionButtonText}>New Subject</Text>
+          </Scalable>
+
+          <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/users')}>
+            <View style={styles.utilityIconWrap}>
+              <Text style={styles.utilityIcon}>🎚️</Text>
             </View>
-            <View style={styles.aiLimitsTextWrap}>
-              <Text style={styles.aiLimitsTitle}>AI Question Limits</Text>
-              <Text style={styles.aiLimitsSubtitle}>Set daily limits & bonus questions</Text>
+            <View style={styles.utilityTextWrap}>
+              <Text style={styles.utilityTitle}>AI Question Limits</Text>
+              <Text style={styles.utilitySubtitle}>Set daily limits & bonus questions</Text>
             </View>
-            <Text style={styles.aiLimitsArrow}>›</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.aiLimitsCard, pressed && styles.aiLimitsCardPressed]}
-            onPress={() => router.push('/admin/video-views')}
-          >
-            <View style={styles.aiLimitsIconWrap}>
-              <Text style={styles.aiLimitsIcon}>🔒</Text>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Scalable>
+
+          <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/video-views')}>
+            <View style={styles.utilityIconWrap}>
+              <Text style={styles.utilityIcon}>🔒</Text>
             </View>
-            <View style={styles.aiLimitsTextWrap}>
-              <Text style={styles.aiLimitsTitle}>Video View Limits</Text>
-              <Text style={styles.aiLimitsSubtitle}>Fix up a student who hit a lecture's view limit</Text>
+            <View style={styles.utilityTextWrap}>
+              <Text style={styles.utilityTitle}>Video View Limits</Text>
+              <Text style={styles.utilitySubtitle}>Fix up a student who hit a lecture's view limit</Text>
             </View>
-            <Text style={styles.aiLimitsArrow}>›</Text>
-          </Pressable>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Scalable>
         </>
       ) : null}
 
-      <Text style={styles.sectionTitle}>{isAdmin ? 'All subjects' : 'Chapters you manage'}</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{isAdmin ? 'All subjects' : 'Chapters you manage'}</Text>
+        {isAdmin && subjects.length > 0 ? (
+          <View style={styles.sectionCountBadge}>
+            <Text style={styles.sectionCountText}>{subjects.length}</Text>
+          </View>
+        ) : null}
+      </View>
 
       {isAdmin ? (
         <FlatList
           data={subjects}
           keyExtractor={(s) => s.id}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View style={styles.card}>
-              <Pressable style={styles.cardMain} onPress={() => router.push(`/admin/subject/${item.id}`)}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
+              <Scalable style={styles.cardMain} onPress={() => router.push(`/admin/subject/${item.id}`)}>
+                <View style={styles.cardMainLeft}>
+                  <View
+                    style={[
+                      styles.subjectIconWrap,
+                      { backgroundColor: SUBJECT_ACCENTS[index % SUBJECT_ACCENTS.length] + '26' },
+                    ]}
+                  >
+                    <Text style={styles.subjectIcon}>📘</Text>
+                  </View>
+                  <Text style={styles.cardTitle} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                </View>
                 <Text style={styles.cardArrow}>›</Text>
-              </Pressable>
+              </Scalable>
               {/* Circular icon-only trash button (2026 redesign pass) instead
                   of a bare red "Delete" text link — same destructive confirm
                   Alert on press, just a clearer, more deliberate-looking tap
@@ -159,7 +185,7 @@ export default function AdminHomeScreen() {
           data={managedCourses}
           keyExtractor={(c) => c.id}
           renderItem={({ item }) => (
-            <Pressable style={styles.card} onPress={() => router.push(`/admin/course/${item.id}`)}>
+            <Scalable style={styles.card} onPress={() => router.push(`/admin/course/${item.id}`)}>
               <View style={styles.cardMain}>
                 <View>
                   <Text style={styles.cardTitle}>{item.title}</Text>
@@ -167,7 +193,7 @@ export default function AdminHomeScreen() {
                 </View>
                 <Text style={styles.cardArrow}>›</Text>
               </View>
-            </Pressable>
+            </Scalable>
           )}
           ListEmptyComponent={
             <Text style={styles.empty}>
@@ -182,46 +208,25 @@ export default function AdminHomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl },
-  // Plain block container — was `flexDirection: 'row'` back when it held
-  // two buttons side by side; only one is left now (see the JSX comment
-  // above), and keeping it a row was the source of the sizing ambiguity.
-  adminActions: { marginBottom: spacing.sm },
+  // Solid color, not a gradient — see the note on <Scalable> above for why.
+  // Still reads as the screen's primary action: full width, bright primary
+  // color, bold label, plus the press-scale animation every row on this
+  // screen now shares.
   actionButton: {
-    // Explicit width, not flex:1 — this is the Pressable itself, so its
-    // size is fully self-determined and never depends on what's rendered
-    // inside it, or on how a flex-grow item resolves inside a row. See the
-    // JSX comment above.
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     width: '100%',
+    minHeight: 50,
     borderRadius: radius.pill,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    backgroundColor: colors.primary,
+    marginBottom: spacing.lg,
+    ...cardShadow,
   },
-  actionButtonPressed: { opacity: 0.85 },
-  // Explicit fontSize/fontFamily here (rather than relying on RN's host
-  // default + the app-wide Cairo default in app/_layout.tsx) — a Text with
-  // its own `style` prop never picks up that global default in the first
-  // place, and this button was the one place in the admin screens missing
-  // an explicit size, so give it the same treatment every other button
-  // label in the app already has. No positioning here — it's a normal
-  // sibling centered by the Pressable's own alignItems/justifyContent.
-  actionButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', fontFamily: fonts.bold },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: radius.pill,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: colors.primary + '55',
-    backgroundColor: colors.primary + '14',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonPressed: { backgroundColor: colors.primary + '22' },
-  secondaryButtonText: { color: colors.primary, fontWeight: '600', textAlign: 'center' },
-  aiLimitsCard: {
+  actionButtonIcon: { color: colors.onPrimary, fontSize: 18, fontWeight: '700', fontFamily: fonts.bold },
+  actionButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16, fontFamily: fonts.bold },
+  utilityCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.accent + '14',
@@ -230,12 +235,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     gap: spacing.md,
     ...cardShadow,
   },
-  aiLimitsCardPressed: { backgroundColor: colors.accent + '22' },
-  aiLimitsIconWrap: {
+  utilityCardLast: { marginBottom: spacing.xl },
+  utilityIconWrap: {
     width: 44,
     height: 44,
     borderRadius: radius.pill,
@@ -243,16 +248,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  aiLimitsIcon: { fontSize: 22 },
-  aiLimitsTextWrap: { flex: 1 },
-  aiLimitsTitle: { color: colors.text, fontWeight: '700', fontSize: 15 },
-  aiLimitsSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  aiLimitsArrow: { fontSize: 22, color: colors.accent, fontWeight: '600' },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: colors.textMuted, marginBottom: spacing.md },
+  utilityIcon: { fontSize: 22 },
+  utilityTextWrap: { flex: 1 },
+  utilityTitle: { color: colors.text, fontWeight: '700', fontSize: 15 },
+  utilitySubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  utilityArrow: { fontSize: 22, color: colors.accent, fontWeight: '600' },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  sectionTitle: { fontSize: 15, fontWeight: '600', color: colors.textMuted },
+  sectionCountBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionCountText: { fontSize: 11, fontWeight: '700', color: colors.textMuted },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: spacing.sm,
     flexDirection: 'row',
@@ -260,7 +278,16 @@ const styles = StyleSheet.create({
     ...cardShadow,
   },
   cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  cardMainLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  subjectIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subjectIcon: { fontSize: 16 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flexShrink: 1 },
   cardSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   cardArrow: { fontSize: 20, color: colors.textFaint, marginRight: 12 },
   deleteButton: {
