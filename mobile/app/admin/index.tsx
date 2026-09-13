@@ -56,16 +56,21 @@ export default function AdminHomeScreen() {
       {isAdmin ? (
         <>
           <View style={styles.adminActions}>
-            {/* Gradient primary action + bordered pill secondary action
-                (2026 redesign pass) — was two flat same-color rectangles;
-                the gradient now marks which action is primary at a glance.
-                The gradient is an absolutely-filled sibling BEHIND the label
-                rather than the label being a child of <LinearGradient> —
-                this button's text was rendering invisible on at least one
-                device with the old child-of-LinearGradient nesting (cause
-                never pinned down), so the label is now a plain sibling
-                <Text> stacked on top by ordinary z-order, which sidesteps
-                whatever that was regardless of its actual cause. */}
+            {/* Gradient primary action (2026 redesign pass) — was two flat
+                same-color rectangles; the gradient now marks which action is
+                primary at a glance.
+                Layout note: <Pressable> itself now owns the real size
+                (flex:1 + minHeight — it's the row's direct flex child, so
+                this is guaranteed to work, unlike flex:1 on something
+                nested two levels down). <LinearGradient> is purely a visual
+                fill absolutely stacked behind the label — it contributes
+                nothing to sizing, so it can't come out the wrong size no
+                matter what. The label is a plain sibling <Text>, not a
+                child of <LinearGradient>, because on at least one device
+                text rendered as a direct child of <LinearGradient> came out
+                fully invisible even with an unmistakable color — a plain
+                sibling stacked on top by ordinary z-order sidesteps that
+                regardless of its actual cause. */}
             <Pressable
               onPress={() => router.push('/admin/create-subject')}
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -76,7 +81,9 @@ export default function AdminHomeScreen() {
                 end={{ x: 1, y: 0 }}
                 style={StyleSheet.absoluteFillObject}
               />
-              <Text style={styles.actionButtonText}>+ New Subject</Text>
+              <Text style={styles.actionButtonText} pointerEvents="none">
+                + New Subject
+              </Text>
             </Pressable>
           </View>
           <Pressable
@@ -169,8 +176,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl },
   adminActions: { flexDirection: 'row', gap: 10, marginBottom: spacing.sm },
   actionButton: {
+    // This is the Pressable itself — the row's direct flex child — so its
+    // size is fully self-determined (flex:1 + minHeight) and never depends
+    // on what's rendered inside it. See the JSX comment above.
     borderRadius: radius.pill,
-    paddingVertical: 12,
+    minHeight: 48,
     paddingHorizontal: 16,
     flex: 1,
     alignItems: 'center',
@@ -183,7 +193,8 @@ const styles = StyleSheet.create({
   // its own `style` prop never picks up that global default in the first
   // place, and this button was the one place in the admin screens missing
   // an explicit size, so give it the same treatment every other button
-  // label in the app already has.
+  // label in the app already has. No positioning here — it's a normal
+  // sibling centered by the Pressable's own alignItems/justifyContent.
   actionButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', fontFamily: fonts.bold },
   secondaryButton: {
     flex: 1,
