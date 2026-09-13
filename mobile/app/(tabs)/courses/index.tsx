@@ -6,13 +6,8 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { listSubjects } from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
+import { subjectIcon } from '@/lib/subjectIcon';
 import type { Subject } from '@/lib/types';
-
-const SUBJECT_ICONS: Record<string, string> = {
-  Physics: '⚛️',
-  Chemistry: '🧪',
-  Biology: '🧬',
-};
 
 // Each subject gets its own two-stop gradient for its icon badge (2026
 // redesign pass) instead of every subject sharing one flat gray square —
@@ -62,7 +57,7 @@ export default function SubjectsScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.iconBadge}
             >
-              <Text style={styles.icon}>{SUBJECT_ICONS[item.name] ?? '📘'}</Text>
+              <Text style={styles.icon}>{subjectIcon(item.name)}</Text>
             </LinearGradient>
             <Text style={styles.title}>{item.name}</Text>
             <Text style={styles.chevron}>›</Text>

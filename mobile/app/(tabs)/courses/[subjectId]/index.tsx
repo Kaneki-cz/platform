@@ -7,6 +7,7 @@ import { ResolvedImage } from '@/components/ResolvedImage';
 import { getSubject, listTeachers } from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, radius, spacing } from '@/constants/theme';
+import { subjectIcon } from '@/lib/subjectIcon';
 import { GRADE_LEVELS, type Course, type GradeLevel, type SubjectDetail, type Teacher } from '@/lib/types';
 
 // Shared brand-gradient stops (cyan -> violet, see constants/theme.ts) reused
@@ -220,7 +221,7 @@ function CourseGrid({
               resizeMode="contain"
               fallback={
                 <View style={[styles.courseCover, styles.photoPlaceholder]}>
-                  <Text style={styles.photoPlaceholderText}>📘</Text>
+                  <Text style={styles.photoPlaceholderText}>{subjectIcon(subject.name)}</Text>
                 </View>
               }
             />

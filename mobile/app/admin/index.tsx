@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
+import { subjectIcon } from '@/lib/subjectIcon';
 import type { ManagedCourse, Subject } from '@/lib/types';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -15,28 +16,6 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 // wrapping around. Colors come straight from the shared theme palette (no
 // new ones introduced) so this stays consistent with the rest of the app.
 const SUBJECT_ACCENTS = [colors.primary, colors.accent, colors.violet, colors.success];
-
-/** Subject has no icon field of its own (just id/name/order_index), so the
- * icon is picked from the subject's own name — a keyword match against
- * both the Arabic and English spellings admins actually use, with a plain
- * book as the fallback for anything else (a new language, "Earth Science",
- * whatever an admin names their next subject). This keeps working for
- * subjects nobody has created yet, unlike hardcoding icons for today's
- * three (Physics/Chemistry/Biology). */
-function subjectIcon(name: string): string {
-  const n = name.toLowerCase();
-  const has = (...keywords: string[]) => keywords.some((k) => n.includes(k));
-  if (has('physic', 'فيزياء', 'فيزيا')) return '⚛️';
-  if (has('chem', 'كيمياء', 'كيميا')) return '🧪';
-  if (has('bio', 'أحياء', 'احياء')) return '🧬';
-  if (has('math', 'رياضيات')) return '📐';
-  if (has('arabic', 'لغة عربية', 'عربي')) return '📖';
-  if (has('english', 'انجليز', 'إنجليز')) return '🔤';
-  if (has('geology', 'جيولوجيا')) return '🌋';
-  if (has('geography', 'جغرافيا')) return '🗺️';
-  if (has('history', 'تاريخ')) return '🏛️';
-  return '📚';
-}
 
 /** Redesign pass 2026-09 — replaces the earlier gradient "+ New Subject"
  * button, whose text repeatedly failed to render correctly on at least one

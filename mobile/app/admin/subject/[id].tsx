@@ -33,6 +33,7 @@ import {
   uploadImage,
 } from '@/lib/api';
 import { colors, radius, spacing } from '@/constants/theme';
+import { subjectIcon } from '@/lib/subjectIcon';
 import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher, type User } from '@/lib/types';
 
 // width/height come straight from the picker's own asset — see
@@ -515,7 +516,11 @@ export default function ManageSubjectScreen() {
               url={course.cover_image_url}
               style={styles.chapterCover}
               containerStyle={styles.chapterCover}
-              fallback={<View style={[styles.chapterCover, styles.photoPlaceholder]}><Text style={styles.photoPlaceholderText}>📘</Text></View>}
+              fallback={
+                <View style={[styles.chapterCover, styles.photoPlaceholder]}>
+                  <Text style={styles.photoPlaceholderText}>{subjectIcon(subject.name)}</Text>
+                </View>
+              }
             />
             <Text style={styles.cardName} numberOfLines={2}>
               {index + 1}. {course.title}
