@@ -152,6 +152,35 @@ class ManagedCourseOut(CourseOut):
     subject_name: str
 
 
+class DashboardChapterOut(BaseModel):
+    """One chapter's row in the Teacher Dashboard's per-chapter performance
+    list — see GET /api/v1/courses/mine/dashboard. avg_score_percent/
+    exam_attempt_count are None/0 for a chapter with no completed exam
+    attempts yet (no standalone exams, or nobody's finished one), so the
+    mobile screen can tell "no data yet" apart from "0%"."""
+
+    id: uuid.UUID
+    title: str
+    lecture_count: int
+    exam_attempt_count: int = 0
+    avg_score_percent: float | None = None
+
+
+class TeacherDashboardOut(BaseModel):
+    """Aggregated stats backing the Teacher Dashboard screen — same chapter
+    scoping as GET /api/v1/courses/mine/managed (every chapter for an admin,
+    only the chapter(s) filed under the caller's linked teacher card for an
+    instructor), rolled up into counts + exam performance instead of a flat
+    list. avg_score_percent/pass_rate_percent are None (not 0) when nobody
+    has completed a standalone exam yet in any managed chapter."""
+
+    chapters_count: int
+    lectures_count: int
+    avg_score_percent: float | None = None
+    pass_rate_percent: float | None = None
+    chapters: list[DashboardChapterOut] = []
+
+
 class CourseCreate(BaseModel):
     # Nullable because an instructor creating their own chapter never sends
     # one — the server derives it from their linked TeacherProfile instead

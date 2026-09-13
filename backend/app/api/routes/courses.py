@@ -2,6 +2,7 @@ import uuid
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, require_admin, require_instructor_or_admin
@@ -15,7 +16,16 @@ from app.models.question import Question, QuestionAttempt
 from app.models.subject import Subject
 from app.models.teacher import TeacherProfile
 from app.models.user import User, UserRole
-from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate, ExamSummaryOut, ManagedCourseOut
+from app.schemas.course import (
+    CourseCreate,
+    CourseDetailOut,
+    CourseOut,
+    CourseUpdate,
+    DashboardChapterOut,
+    ExamSummaryOut,
+    ManagedCourseOut,
+    TeacherDashboardOut,
+)
 from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
@@ -229,6 +239,92 @@ def my_managed_courses(db: Session = Depends(get_db), current_user: User = Depen
 
     rows = query.order_by(Subject.order_index, Course.order_index).all()
     return [ManagedCourseOut(**CourseOut.model_validate(course).model_dump(), subject_name=subject_name) for course, subject_name in rows]
+
+
+@router.get("/mine/dashboard", response_model=TeacherDashboardOut)
+def my_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> TeacherDashboardOut:
+    """Aggregated stats for the Teacher Dashboard screen — same chapter
+    scoping as my_managed_courses above (every chapter for an admin, only
+    the chapter(s) filed under the caller's linked teacher card for an
+    instructor), rolled up into counts + exam performance instead of a flat
+    list. All real numbers computed from Lesson/Exam/ExamAttempt rows —
+    nothing here is mocked. Only completed attempts (submitted_at set)
+    count toward the score/pass-rate numbers, same as everywhere else exam
+    results are surfaced (see _annotate_exam_gate above)."""
+    query = db.query(Course)
+    if current_user.role == UserRole.admin:
+        pass
+    else:
+        query = query.join(TeacherProfile, TeacherProfile.id == Course.teacher_id).filter(
+            TeacherProfile.user_id == current_user.id
+        )
+
+    courses = query.order_by(Course.order_index).all()
+    course_ids = [c.id for c in courses]
+
+    lecture_counts: dict[uuid.UUID, int] = {}
+    if course_ids:
+        rows = (
+            db.query(Lesson.course_id, func.count(Lesson.id))
+            .filter(Lesson.course_id.in_(course_ids))
+            .group_by(Lesson.course_id)
+            .all()
+        )
+        lecture_counts = dict(rows)
+
+    # One row per course with at least one completed exam attempt — a
+    # course with no standalone exams, or exams nobody has finished yet,
+    # simply has no entry here and falls back to (0, None, 0) below.
+    exam_stats: dict[uuid.UUID, tuple[int, float | None, int]] = {}
+    if course_ids:
+        rows = (
+            db.query(
+                Exam.course_id,
+                func.count(ExamAttempt.id),
+                func.avg(ExamAttempt.score_percent),
+                func.sum(case((ExamAttempt.passed.is_(True), 1), else_=0)),
+            )
+            .join(ExamAttempt, ExamAttempt.exam_id == Exam.id)
+            .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+            .group_by(Exam.course_id)
+            .all()
+        )
+        for course_id, attempt_count, avg_score, passed_count in rows:
+            exam_stats[course_id] = (attempt_count, float(avg_score) if avg_score is not None else None, passed_count or 0)
+
+    chapters_out: list[DashboardChapterOut] = []
+    total_attempts = 0
+    total_passed = 0
+    # Weighted by each chapter's own attempt count, so a chapter with 300
+    # attempts doesn't get diluted to the same weight as one with 3 when
+    # computing the platform-wide average score.
+    score_weighted_sum = 0.0
+    for course in courses:
+        attempt_count, avg_score, passed_count = exam_stats.get(course.id, (0, None, 0))
+        chapters_out.append(
+            DashboardChapterOut(
+                id=course.id,
+                title=course.title,
+                lecture_count=lecture_counts.get(course.id, 0),
+                exam_attempt_count=attempt_count,
+                avg_score_percent=avg_score,
+            )
+        )
+        if attempt_count:
+            total_attempts += attempt_count
+            total_passed += passed_count
+            score_weighted_sum += (avg_score or 0.0) * attempt_count
+
+    return TeacherDashboardOut(
+        chapters_count=len(courses),
+        lectures_count=sum(lecture_counts.values()),
+        avg_score_percent=(score_weighted_sum / total_attempts) if total_attempts else None,
+        pass_rate_percent=(total_passed / total_attempts * 100) if total_attempts else None,
+        chapters=chapters_out,
+    )
 
 
 @router.post("", response_model=CourseOut, status_code=201)
