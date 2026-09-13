@@ -44,16 +44,21 @@ export const GRADE_LEVELS = [
 
 export type GradeLevel = (typeof GRADE_LEVELS)[number];
 
-// A display-card teacher within a subject — admin-managed, no login of its
-// own. NOT the same thing as Instructor below (a real user account with
-// edit permissions) — see backend/app/models/teacher.py for the full
-// distinction.
+// A display-card teacher within a subject, admin-managed — can optionally
+// be LINKED to a real instructor account (user_id), which is what actually
+// grants that account edit access to every chapter filed under this
+// teacher (see backend/app/models/teacher.py and app/api/deps.py's
+// ensure_can_manage_course). linked_email/linked_full_name are only ever
+// set when user_id is — see lib/api.ts's linkTeacherAccount/unlinkTeacherAccount.
 export interface Teacher {
   id: string;
   subject_id: string;
   name: string;
   photo_url: string | null;
   order_index: number;
+  user_id: string | null;
+  linked_email: string | null;
+  linked_full_name: string | null;
 }
 
 export interface TeacherCreateInput {
@@ -78,6 +83,15 @@ export interface Course {
   teacher_id: string | null;
   cover_image_url: string | null;
   order_index: number;
+}
+
+// One row in "chapters you manage" (GET /api/v1/courses/mine/managed) — see
+// lib/api.ts's myManagedCourses. Just a Course plus its parent subject's
+// name, since this list is flat (no subject-picking step) and needs to show
+// which subject each chapter belongs to. This is what the instructor branch
+// of app/admin/index.tsx renders instead of the subject list an admin sees.
+export interface ManagedCourse extends Course {
+  subject_name: string;
 }
 
 export interface Lesson {
@@ -264,12 +278,6 @@ export interface LessonUpdateInput {
   // actually present in the request body.
   max_views?: number | null;
   exempt_from_exam_gate?: boolean;
-}
-
-export interface Instructor {
-  user_id: string;
-  email: string;
-  full_name: string | null;
 }
 
 // --- Segment quiz questions ------------------------------------------------

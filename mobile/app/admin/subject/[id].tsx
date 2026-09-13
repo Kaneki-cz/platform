@@ -24,7 +24,9 @@ import {
   deleteCourse,
   deleteTeacher,
   getSubject,
+  linkTeacherAccount,
   listTeachers,
+  unlinkTeacherAccount,
   updateCourse,
   updateTeacher,
   uploadImage,
@@ -50,6 +52,13 @@ export default function ManageSubjectScreen() {
   const [teacherPhotoPreview, setTeacherPhotoPreview] = useState<string | null>(null); // local file, just-cropped
   const [teacherError, setTeacherError] = useState<string | null>(null);
   const [teacherSubmitting, setTeacherSubmitting] = useState(false);
+
+  // --- Instructor-account linking (see backend/app/models/teacher.py's
+  // user_id) — only meaningful while editing an existing teacher card,
+  // never while creating a new one.
+  const [teacherLinkEmail, setTeacherLinkEmail] = useState('');
+  const [teacherLinkError, setTeacherLinkError] = useState<string | null>(null);
+  const [teacherLinkSubmitting, setTeacherLinkSubmitting] = useState(false);
 
   // --- Chapter form state -----------------------------------------------
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -125,6 +134,8 @@ export default function ManageSubjectScreen() {
     setTeacherPhotoUrl(null);
     setTeacherPhotoPreview(null);
     setTeacherError(null);
+    setTeacherLinkEmail('');
+    setTeacherLinkError(null);
   };
 
   const onEditTeacher = (teacher: Teacher) => {
@@ -133,6 +144,8 @@ export default function ManageSubjectScreen() {
     setTeacherPhotoUrl(teacher.photo_url);
     setTeacherPhotoPreview(null);
     setTeacherError(null);
+    setTeacherLinkEmail('');
+    setTeacherLinkError(null);
     // Tapping a teacher card also scopes the Chapters section below to just
     // their chapters (see visibleCourses) — and, as long as we're not in the
     // middle of editing some other chapter already, pre-selects them in the
@@ -182,6 +195,35 @@ export default function ManageSubjectScreen() {
         },
       },
     ]);
+  };
+
+  const onLinkTeacher = async () => {
+    if (!teacherEditingId || !teacherLinkEmail.trim()) return;
+    setTeacherLinkError(null);
+    setTeacherLinkSubmitting(true);
+    try {
+      await linkTeacherAccount(teacherEditingId, teacherLinkEmail.trim());
+      setTeacherLinkEmail('');
+      load();
+    } catch (e) {
+      setTeacherLinkError(e instanceof ApiError ? e.message : 'Something went wrong.');
+    } finally {
+      setTeacherLinkSubmitting(false);
+    }
+  };
+
+  const onUnlinkTeacher = async () => {
+    if (!teacherEditingId) return;
+    setTeacherLinkError(null);
+    setTeacherLinkSubmitting(true);
+    try {
+      await unlinkTeacherAccount(teacherEditingId);
+      load();
+    } catch (e) {
+      setTeacherLinkError(e instanceof ApiError ? e.message : 'Something went wrong.');
+    } finally {
+      setTeacherLinkSubmitting(false);
+    }
   };
 
   // --- Chapters -----------------------------------------------------------
@@ -272,6 +314,11 @@ export default function ManageSubjectScreen() {
   // which is what made a just-added chapter hard to find once a subject
   // had more than a couple of teachers.
   const filterTeacher = teacherEditingId ? teachers.find((t) => t.id === teacherEditingId) : null;
+  // Same lookup, but read as "the teacher card currently open for editing"
+  // rather than "the filter applied to the chapters grid below" — used for
+  // the instructor-account linking section, which only makes sense while
+  // editing (not while still filling in the "Add a teacher" form).
+  const editingTeacher = filterTeacher;
   const visibleCourses = filterTeacher
     ? subject.courses.filter((c) => c.teacher_id === filterTeacher.id)
     : subject.courses;
@@ -335,6 +382,56 @@ export default function ManageSubjectScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* --- Instructor account link (only while editing an existing
+          teacher card — a brand-new one has to be saved first) ---------- */}
+      {editingTeacher ? (
+        <View style={styles.linkBox}>
+          <Text style={styles.label}>Instructor account</Text>
+          {editingTeacher.user_id ? (
+            <>
+              <Text style={styles.linkedText}>
+                Linked to {editingTeacher.linked_full_name || editingTeacher.linked_email}
+                {editingTeacher.linked_full_name ? ` (${editingTeacher.linked_email})` : ''}
+              </Text>
+              <Text style={styles.hint}>
+                This account can now create/edit lessons and exams in every chapter assigned to {editingTeacher.name}.
+              </Text>
+              <Pressable style={styles.unlinkButton} onPress={onUnlinkTeacher} disabled={teacherLinkSubmitting}>
+                {teacherLinkSubmitting ? (
+                  <ActivityIndicator color={colors.danger} />
+                ) : (
+                  <Text style={styles.unlinkButtonText}>Unlink account</Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.hint}>
+                Not linked to any account yet — {editingTeacher.name} is just a display card. Link a registered
+                account by email to let them upload their own lessons/exams into their chapters.
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="teacher@example.com"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={teacherLinkEmail}
+                onChangeText={setTeacherLinkEmail}
+              />
+              <Pressable style={styles.button} onPress={onLinkTeacher} disabled={teacherLinkSubmitting}>
+                {teacherLinkSubmitting ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <Text style={styles.buttonText}>Link account</Text>
+                )}
+              </Pressable>
+            </>
+          )}
+          {teacherLinkError ? <Text style={styles.error}>{teacherLinkError}</Text> : null}
+        </View>
+      ) : null}
 
       {/* --- Chapters --------------------------------------------------- */}
       <View style={styles.sectionTitleRow}>
@@ -563,6 +660,25 @@ const styles = StyleSheet.create({
   teacherPhotoPicker: { width: 96, height: 96, borderRadius: radius.pill, alignSelf: 'flex-start' },
   coverPicker: { width: '100%', height: 120 },
   photoPickerText: { color: colors.primary, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.sm },
+  linkBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  linkedText: { color: colors.success, fontWeight: '600', fontSize: 14, marginBottom: 4 },
+  unlinkButton: {
+    borderWidth: 1,
+    borderColor: colors.danger + '55',
+    backgroundColor: colors.dangerSurface,
+    borderRadius: radius.md,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  unlinkButtonText: { color: colors.danger, fontWeight: '600' },
   formActions: { flexDirection: 'row', gap: 10, marginBottom: 20, marginTop: spacing.sm },
   formActionsButton: { flex: 1, marginBottom: 0 },
   cancelButton: {

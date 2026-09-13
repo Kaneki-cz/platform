@@ -3,20 +3,29 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ApiError, deleteSubject, myManagedSubjects } from '@/lib/api';
+import { ApiError, deleteSubject, myManagedCourses, myManagedSubjects } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { cardShadow, colors, gradientBrand, radius, spacing } from '@/constants/theme';
-import type { Subject } from '@/lib/types';
+import type { ManagedCourse, Subject } from '@/lib/types';
 
 export default function AdminHomeScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  // Only ever populated for role=instructor — see the flat "chapters you
+  // manage" list below, which replaces subject-browsing for them now that
+  // their edit access is scoped to specific chapters (see
+  // backend/app/models/teacher.py's user_id) rather than a whole subject.
+  const [managedCourses, setManagedCourses] = useState<ManagedCourse[]>([]);
   const isAdmin = user?.role === 'admin';
 
   const load = useCallback(() => {
-    myManagedSubjects().then(setSubjects).catch(() => {});
-  }, []);
+    if (isAdmin) {
+      myManagedSubjects().then(setSubjects).catch(() => {});
+    } else {
+      myManagedCourses().then(setManagedCourses).catch(() => {});
+    }
+  }, [isAdmin]);
 
   useFocusEffect(load);
 
@@ -62,12 +71,6 @@ export default function AdminHomeScreen() {
                 </LinearGradient>
               )}
             </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-              onPress={() => router.push('/admin/instructors')}
-            >
-              <Text style={styles.secondaryButtonText}>Manage Instructors</Text>
-            </Pressable>
           </View>
           <Pressable
             style={({ pressed }) => [styles.aiLimitsCard, pressed && styles.aiLimitsCardPressed]}
@@ -98,24 +101,22 @@ export default function AdminHomeScreen() {
         </>
       ) : null}
 
-      <Text style={styles.sectionTitle}>
-        {isAdmin ? 'All subjects' : 'Subjects you manage'}
-      </Text>
+      <Text style={styles.sectionTitle}>{isAdmin ? 'All subjects' : 'Chapters you manage'}</Text>
 
-      <FlatList
-        data={subjects}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Pressable style={styles.cardMain} onPress={() => router.push(`/admin/subject/${item.id}`)}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardArrow}>›</Text>
-            </Pressable>
-            {isAdmin ? (
-              // Circular icon-only trash button (2026 redesign pass) instead
-              // of a bare red "Delete" text link — same destructive confirm
-              // Alert on press, just a clearer, more deliberate-looking tap
-              // target for an irreversible action.
+      {isAdmin ? (
+        <FlatList
+          data={subjects}
+          keyExtractor={(s) => s.id}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <Pressable style={styles.cardMain} onPress={() => router.push(`/admin/subject/${item.id}`)}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+                <Text style={styles.cardArrow}>›</Text>
+              </Pressable>
+              {/* Circular icon-only trash button (2026 redesign pass) instead
+                  of a bare red "Delete" text link — same destructive confirm
+                  Alert on press, just a clearer, more deliberate-looking tap
+                  target for an irreversible action. */}
               <Pressable
                 style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
                 onPress={() => onDelete(item.id, item.name)}
@@ -123,17 +124,36 @@ export default function AdminHomeScreen() {
               >
                 <Text style={styles.deleteButtonIcon}>🗑️</Text>
               </Pressable>
-            ) : null}
-          </View>
-        )}
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            {isAdmin
-              ? 'No subjects yet — create one above.'
-              : "You're not assigned as an instructor to any subject yet. Ask an admin to assign you."}
-          </Text>
-        }
-      />
+            </View>
+          )}
+          ListEmptyComponent={<Text style={styles.empty}>No subjects yet — create one above.</Text>}
+        />
+      ) : (
+        // An instructor no longer browses by subject — their edit access is
+        // scoped to specific chapters via their linked teacher card (see
+        // backend/app/models/teacher.py's user_id), so this goes straight
+        // into a chapter's own lecture/exam management screen.
+        <FlatList
+          data={managedCourses}
+          keyExtractor={(c) => c.id}
+          renderItem={({ item }) => (
+            <Pressable style={styles.card} onPress={() => router.push(`/admin/course/${item.id}`)}>
+              <View style={styles.cardMain}>
+                <View>
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.cardSubtitle}>{item.subject_name}</Text>
+                </View>
+                <Text style={styles.cardArrow}>›</Text>
+              </View>
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              You're not linked to a chapter yet — ask an admin to link your account to a teacher card.
+            </Text>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -204,6 +224,7 @@ const styles = StyleSheet.create({
   },
   cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  cardSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   cardArrow: { fontSize: 20, color: colors.textFaint, marginRight: 12 },
   deleteButton: {
     width: 36,

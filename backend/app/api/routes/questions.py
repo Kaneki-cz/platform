@@ -14,9 +14,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
+from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
-from app.models.course import Course
 from app.models.exam import Exam
 from app.models.lesson import Lesson
 from app.models.question import Question, QuestionAttempt
@@ -42,33 +41,19 @@ def _grade(question: Question, submitted_answer: str) -> bool:
     return submitted_answer.strip().lower() == question.correct_answer.strip().lower()
 
 
-def _subject_id_of_lesson(db: Session, lesson: Lesson) -> uuid.UUID:
-    course = db.get(Course, lesson.course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course.subject_id
-
-
-def _subject_id_of_exam(db: Session, exam: Exam) -> uuid.UUID:
-    course = db.get(Course, exam.course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course.subject_id
-
-
-def _subject_id_of_question(db: Session, question: Question) -> uuid.UUID:
+def _course_id_of_question(db: Session, question: Question) -> uuid.UUID:
     """Works for either kind of question — see Question's docstring on
     lesson_id/exam_id being mutually exclusive."""
     if question.lesson_id is not None:
         lesson = db.get(Lesson, question.lesson_id)
         if not lesson:
             raise HTTPException(status_code=404, detail="Lesson not found")
-        return _subject_id_of_lesson(db, lesson)
+        return lesson.course_id
     if question.exam_id is not None:
         exam = db.get(Exam, question.exam_id)
         if not exam:
             raise HTTPException(status_code=404, detail="Exam not found")
-        return _subject_id_of_exam(db, exam)
+        return exam.course_id
     raise HTTPException(status_code=400, detail="This question has neither a lesson nor an exam.")
 
 
@@ -161,7 +146,7 @@ def list_lesson_questions_admin(
     lesson = db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
     return _ordered_questions(db, lesson_id)
 
 
@@ -174,7 +159,7 @@ def list_exam_questions_admin(
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+    ensure_can_manage_course(db, current_user, exam.course_id)
     return db.query(Question).filter(Question.exam_id == exam_id).order_by(Question.id).all()
 
 
@@ -191,12 +176,12 @@ def create_question(
         lesson = db.get(Lesson, payload.lesson_id)
         if not lesson:
             raise HTTPException(status_code=404, detail="Lesson not found")
-        ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+        ensure_can_manage_course(db, current_user, lesson.course_id)
     else:
         exam = db.get(Exam, payload.exam_id)
         if not exam:
             raise HTTPException(status_code=404, detail="Exam not found")
-        ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+        ensure_can_manage_course(db, current_user, exam.course_id)
 
     question = Question(
         lesson_id=payload.lesson_id,
@@ -225,7 +210,7 @@ def update_question(
     question = db.get(Question, question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
+    ensure_can_manage_course(db, current_user, _course_id_of_question(db, question))
 
     fields = payload.model_dump(exclude_unset=True)
     # Captured before the field is overwritten below — this is the image
@@ -255,7 +240,7 @@ def delete_question(
     question = db.get(Question, question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_question(db, question))
+    ensure_can_manage_course(db, current_user, _course_id_of_question(db, question))
     image_url = question.image_url
     db.delete(question)
     db.commit()

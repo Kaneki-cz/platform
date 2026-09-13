@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
+from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
@@ -42,13 +42,6 @@ router = APIRouter(prefix="/api/v1/exams", tags=["exams"])
 
 def _grade(question: Question, submitted_answer: str) -> bool:
     return submitted_answer.strip().lower() == question.correct_answer.strip().lower()
-
-
-def _subject_id_of_exam(db: Session, exam: Exam) -> uuid.UUID:
-    course = db.get(Course, exam.course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course.subject_id
 
 
 def _question_count(db: Session, exam_id: uuid.UUID) -> int:
@@ -76,7 +69,7 @@ def list_course_exams(
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    ensure_can_manage_subject(db, current_user, course.subject_id)
+    ensure_can_manage_course(db, current_user, course_id)
 
     exams = db.query(Exam).filter(Exam.course_id == course_id).order_by(Exam.order_index).all()
     result = []
@@ -96,7 +89,7 @@ def create_exam(
     course = db.get(Course, payload.course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    ensure_can_manage_subject(db, current_user, course.subject_id)
+    ensure_can_manage_course(db, current_user, payload.course_id)
 
     exam = Exam(
         course_id=payload.course_id,
@@ -126,7 +119,7 @@ def get_exam(
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+    ensure_can_manage_course(db, current_user, exam.course_id)
     out = ExamOut.model_validate(exam)
     out.question_count = _question_count(db, exam.id)
     return out
@@ -142,7 +135,7 @@ def update_exam(
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+    ensure_can_manage_course(db, current_user, exam.course_id)
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(exam, field, value)
@@ -162,7 +155,7 @@ def delete_exam(
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_exam(db, exam))
+    ensure_can_manage_course(db, current_user, exam.course_id)
     db.delete(exam)
     db.commit()
 

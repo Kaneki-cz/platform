@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
 from app.db.database import get_db
-from app.models.subject import SubjectInstructor
+from app.models.course import Course
+from app.models.teacher import TeacherProfile
 from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -43,22 +44,37 @@ def require_instructor_or_admin(current_user: User = Depends(get_current_user)) 
     return current_user
 
 
-def ensure_can_manage_subject(db: Session, user: User, subject_id: uuid.UUID) -> None:
-    """Raise 403 unless `user` may create/edit content within `subject_id`.
+def ensure_can_manage_course(db: Session, user: User, course_id: uuid.UUID) -> None:
+    """Raise 403 unless `user` may create/edit lessons/exams/questions within
+    `course_id` (a "chapter" in the app's UI).
 
-    Admins can manage every subject. Instructors can only manage subjects
-    they've been explicitly assigned to via SubjectInstructor (see
-    app/api/routes/subjects.py's instructor-assignment endpoints).
+    Admins can manage every course — they're the ones who create the
+    chapter "slots" and assign a display-card teacher to each (see
+    app/api/routes/courses.py). An instructor can only manage a course whose
+    `teacher_id` points at a TeacherProfile that's linked to their own
+    account (TeacherProfile.user_id — see app/api/routes/teachers.py's
+    link_teacher_account). This replaces the old subject-wide
+    SubjectInstructor grant (app/models/subject.py, kept in the DB but no
+    longer consulted here) — an instructor's edit access is now scoped to
+    the specific chapter(s) their linked teacher card is assigned to, not
+    every chapter in the whole subject.
     """
     if user.role == UserRole.admin:
         return
-    assigned = (
-        db.query(SubjectInstructor)
-        .filter(SubjectInstructor.subject_id == subject_id, SubjectInstructor.user_id == user.id)
+
+    course = db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    linked = (
+        course.teacher_id is not None
+        and db.query(TeacherProfile.id)
+        .filter(TeacherProfile.id == course.teacher_id, TeacherProfile.user_id == user.id)
         .first()
+        is not None
     )
-    if not assigned:
+    if not linked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not an instructor for this subject",
+            detail="You are not the instructor assigned to this chapter",
         )

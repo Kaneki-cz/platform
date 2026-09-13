@@ -143,6 +143,15 @@ class CourseDetailOut(CourseOut):
     exams: list[ExamSummaryOut] = []
 
 
+class ManagedCourseOut(CourseOut):
+    """One chapter in the current user's "chapters you manage" list — see
+    GET /api/v1/courses/mine/managed. Just CourseOut plus the parent
+    subject's name, since that list is flat (no subject-picking step) and
+    needs to show which subject each chapter belongs to."""
+
+    subject_name: str
+
+
 class CourseCreate(BaseModel):
     subject_id: uuid.UUID
     title: str

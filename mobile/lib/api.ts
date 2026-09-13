@@ -16,12 +16,12 @@ import type {
   ExamStatus,
   ExamSubmitResult,
   ExamUpdateInput,
-  Instructor,
   LessonAccessCode,
   LessonCreateInput,
   LessonDetail,
   LessonUpdateInput,
   LessonViewInfo,
+  ManagedCourse,
   ProgressEntry,
   RedeemCodeResult,
   Question,
@@ -387,27 +387,21 @@ export function deleteSubject(subjectId: string) {
   return request<void>(`/api/v1/subjects/${subjectId}`, { method: 'DELETE' });
 }
 
-/** Subjects the current user may add content to (all of them for an admin,
- * just their assignments for an instructor, empty for a student). */
+/** Subjects the current user may browse/manage by subject — an admin gets
+ * every subject (their "All subjects" home screen); an instructor always
+ * gets [] now (see myManagedCourses below for their equivalent list). */
 export function myManagedSubjects() {
   return request<Subject[]>('/api/v1/subjects/mine/managed');
 }
 
-export function listSubjectInstructors(subjectId: string) {
-  return request<Instructor[]>(`/api/v1/subjects/${subjectId}/instructors`);
-}
-
-export function assignInstructor(subjectId: string, email: string) {
-  return request<Instructor>(`/api/v1/subjects/${subjectId}/instructors`, {
-    method: 'POST',
-    body: JSON.stringify({ email }),
-  });
-}
-
-export function unassignInstructor(subjectId: string, userId: string) {
-  return request<void>(`/api/v1/subjects/${subjectId}/instructors/${userId}`, {
-    method: 'DELETE',
-  });
+/** Chapters the current user can add lessons/exams to: every chapter for an
+ * admin, only the chapter(s) filed under their linked teacher card for an
+ * instructor (see linkTeacherAccount below), empty for a student. This is
+ * what the instructor branch of app/admin/index.tsx renders — flat, no
+ * subject-picking step, since an instructor is scoped to specific chapters
+ * now rather than a whole subject. */
+export function myManagedCourses() {
+  return request<ManagedCourse[]>('/api/v1/courses/mine/managed');
 }
 
 // --- Courses & lessons --------------------------------------------------
@@ -460,6 +454,25 @@ export function updateTeacher(teacherId: string, input: TeacherUpdateInput) {
  * assigned — see backend/app/api/routes/teachers.py's delete_teacher. */
 export function deleteTeacher(teacherId: string) {
   return request<void>(`/api/v1/teachers/${teacherId}`, { method: 'DELETE' });
+}
+
+/** Links a real instructor account (found by email — they must already
+ * have registered) to this teacher card, granting it edit access to every
+ * chapter filed under this teacher. Promotes the account to role=instructor
+ * if it's currently just a student. Fails with a 400 ApiError if that
+ * account is already linked to a different teacher card, or a 404 if no
+ * account exists with that email. */
+export function linkTeacherAccount(teacherId: string, email: string) {
+  return request<Teacher>(`/api/v1/teachers/${teacherId}/link`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+/** Removes this teacher card's linked account, if any — the account itself
+ * keeps existing (and keeps its role) either way. */
+export function unlinkTeacherAccount(teacherId: string) {
+  return request<Teacher>(`/api/v1/teachers/${teacherId}/link`, { method: 'DELETE' });
 }
 
 export function getLesson(lessonId: string) {

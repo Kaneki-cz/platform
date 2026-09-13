@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import get_current_user, require_admin
 from app.db.database import get_db
 from app.models.course import Course
-from app.models.subject import Subject, SubjectInstructor
+from app.models.subject import Subject
 from app.models.user import User
-from app.schemas.subject import InstructorAssign, InstructorOut, SubjectCreate, SubjectDetailOut, SubjectOut
+from app.schemas.subject import SubjectCreate, SubjectDetailOut, SubjectOut
 from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/subjects", tags=["subjects"])
@@ -91,85 +91,19 @@ def delete_subject(
         b2_storage.delete_object_for_url(url)
 
 
-@router.get("/{subject_id}/instructors", response_model=list[InstructorOut])
-def list_instructors(
-    subject_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-) -> list[InstructorOut]:
-    rows = (
-        db.query(SubjectInstructor)
-        .join(User, User.id == SubjectInstructor.user_id)
-        .filter(SubjectInstructor.subject_id == subject_id)
-        .all()
-    )
-    return [
-        InstructorOut(user_id=row.user_id, email=row.user.email, full_name=row.user.full_name) for row in rows
-    ]
-
-
-@router.post("/{subject_id}/instructors", response_model=InstructorOut, status_code=201)
-def assign_instructor(
-    subject_id: uuid.UUID,
-    payload: InstructorAssign,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-) -> InstructorOut:
-    subject = db.get(Subject, subject_id)
-    if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
-
-    user = db.query(User).filter(User.email == payload.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="No user found with that email — they must register first")
-
-    existing = (
-        db.query(SubjectInstructor)
-        .filter(SubjectInstructor.subject_id == subject_id, SubjectInstructor.user_id == user.id)
-        .first()
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail="This user is already an instructor for this subject")
-
-    # Promote to instructor if they're currently just a student (never demotes an admin).
-    if user.role == user.role.student:
-        user.role = user.role.instructor
-
-    db.add(SubjectInstructor(subject_id=subject_id, user_id=user.id))
-    db.commit()
-    return InstructorOut(user_id=user.id, email=user.email, full_name=user.full_name)
-
-
-@router.delete("/{subject_id}/instructors/{user_id}", status_code=204)
-def unassign_instructor(
-    subject_id: uuid.UUID,
-    user_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-) -> None:
-    row = (
-        db.query(SubjectInstructor)
-        .filter(SubjectInstructor.subject_id == subject_id, SubjectInstructor.user_id == user_id)
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="This user is not an instructor for this subject")
-    db.delete(row)
-    db.commit()
-
-
 @router.get("/mine/managed", response_model=list[SubjectOut])
 def my_managed_subjects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[Subject]:
-    """Subjects the current user can add content to: all of them for an
-    admin, just their assignments for an instructor, none for a student."""
+    """Every subject, for an admin only — this backs the admin home screen's
+    "All subjects" browse-by-subject flow (create/rename subjects, manage
+    their teacher cards and chapters). An instructor no longer browses by
+    subject at all: since 2026-09 their edit access is scoped to specific
+    chapters via their linked teacher card (app/models/teacher.py's user_id
+    — see app/api/deps.py's ensure_can_manage_course), so the mobile admin
+    home screen calls GET /api/v1/courses/mine/managed for them instead
+    (a flat list of the chapters they can add lessons/exams to). This old
+    subject-wide SubjectInstructor grant (app/models/subject.py) is kept in
+    the DB but no longer consulted by any permission check, so an instructor
+    always gets [] here now."""
     if current_user.role == current_user.role.admin:
         return db.query(Subject).order_by(Subject.order_index).all()
-    if current_user.role == current_user.role.instructor:
-        return (
-            db.query(Subject)
-            .join(SubjectInstructor, SubjectInstructor.subject_id == Subject.id)
-            .filter(SubjectInstructor.user_id == current_user.id)
-            .order_by(Subject.order_index)
-            .all()
-        )
     return []

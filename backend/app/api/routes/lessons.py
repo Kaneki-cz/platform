@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
+from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.lesson import Lesson
@@ -122,11 +122,9 @@ def get_lesson(
     )
 
 
-def _subject_id_of_course(db: Session, course_id: uuid.UUID) -> uuid.UUID:
-    course = db.get(Course, course_id)
-    if not course:
+def _ensure_course_exists(db: Session, course_id: uuid.UUID) -> None:
+    if not db.get(Course, course_id):
         raise HTTPException(status_code=404, detail="Course not found")
-    return course.subject_id
 
 
 @router.post("", response_model=LessonDetailOut, status_code=201)
@@ -135,8 +133,8 @@ def create_lesson(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_instructor_or_admin),
 ) -> Lesson:
-    subject_id = _subject_id_of_course(db, payload.course_id)
-    ensure_can_manage_subject(db, current_user, subject_id)
+    _ensure_course_exists(db, payload.course_id)
+    ensure_can_manage_course(db, current_user, payload.course_id)
 
     lesson = Lesson(
         course_id=payload.course_id,
@@ -164,7 +162,7 @@ def update_lesson(
     lesson = db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
 
     fields = payload.model_dump(exclude_unset=True)
     # Captured before the field is overwritten below — these are the video
@@ -196,7 +194,7 @@ def delete_lesson(
     lesson = db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
-    ensure_can_manage_subject(db, current_user, _subject_id_of_course(db, lesson.course_id))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
     video_url = lesson.video_url
     cover_image_url = lesson.cover_image_url
     db.delete(lesson)

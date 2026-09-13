@@ -4,7 +4,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
+from app.api.deps import get_current_user, require_admin
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
@@ -12,8 +12,10 @@ from app.models.lesson import Lesson
 from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
+from app.models.subject import Subject
+from app.models.teacher import TeacherProfile
 from app.models.user import User, UserRole
-from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate, ExamSummaryOut
+from app.schemas.course import CourseCreate, CourseDetailOut, CourseOut, CourseUpdate, ExamSummaryOut, ManagedCourseOut
 from app.services import b2_storage
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
@@ -205,13 +207,36 @@ def _annotate_exam_gate(db: Session, current_user: User, course: Course, out: Co
             lesson_out.locked_by_exam = True
 
 
+@router.get("/mine/managed", response_model=list[ManagedCourseOut])
+def my_managed_courses(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[ManagedCourseOut]:
+    """Chapters the current user can add lessons/exams to: every chapter on
+    the platform for an admin, only the chapter(s) filed under their linked
+    teacher card for an instructor (see app/models/teacher.py's user_id and
+    app/api/deps.py's ensure_can_manage_course), none for a student. Flat —
+    no subject-picking step — since an instructor is now scoped to specific
+    chapters rather than a whole subject; each row carries its own
+    subject_name so the mobile admin home screen can still show it."""
+    query = db.query(Course, Subject.name).join(Subject, Subject.id == Course.subject_id)
+
+    if current_user.role == UserRole.admin:
+        pass
+    elif current_user.role == UserRole.instructor:
+        query = query.join(TeacherProfile, TeacherProfile.id == Course.teacher_id).filter(
+            TeacherProfile.user_id == current_user.id
+        )
+    else:
+        return []
+
+    rows = query.order_by(Subject.order_index, Course.order_index).all()
+    return [ManagedCourseOut(**CourseOut.model_validate(course).model_dump(), subject_name=subject_name) for course, subject_name in rows]
+
+
 @router.post("", response_model=CourseOut, status_code=201)
 def create_course(
     payload: CourseCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_instructor_or_admin),
+    _admin: User = Depends(require_admin),
 ) -> Course:
-    ensure_can_manage_subject(db, current_user, payload.subject_id)
     course = Course(
         subject_id=payload.subject_id,
         title=payload.title,
@@ -232,12 +257,11 @@ def update_course(
     course_id: uuid.UUID,
     payload: CourseUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_instructor_or_admin),
+    _admin: User = Depends(require_admin),
 ) -> Course:
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    ensure_can_manage_subject(db, current_user, course.subject_id)
 
     fields = payload.model_dump(exclude_unset=True)
     old_cover_image_url = course.cover_image_url if "cover_image_url" in fields else None
@@ -257,12 +281,11 @@ def update_course(
 def delete_course(
     course_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_instructor_or_admin),
+    _admin: User = Depends(require_admin),
 ) -> None:
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    ensure_can_manage_subject(db, current_user, course.subject_id)
 
     # Deleting the course cascades to its lessons at the ORM level (see
     # Course.lessons' cascade="all, delete-orphan"), but that cascade never
