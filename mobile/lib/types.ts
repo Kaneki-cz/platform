@@ -235,7 +235,12 @@ export interface UsageInfo {
 
 // --- Instructor / admin content-management -------------------------------
 export interface CourseCreateInput {
-  subject_id: string;
+  // Optional because an instructor creating their own chapter never sends
+  // one — the server derives it from their linked TeacherProfile (see
+  // backend/app/api/routes/courses.py's create_course). Still required in
+  // practice for an admin's request, which is enforced server-side, not by
+  // this type.
+  subject_id?: string;
   title: string;
   description?: string;
   grade_level?: GradeLevel;

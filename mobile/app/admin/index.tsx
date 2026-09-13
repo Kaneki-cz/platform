@@ -123,7 +123,18 @@ export default function AdminHomeScreen() {
             <Text style={styles.utilityArrow}>›</Text>
           </Scalable>
         </>
-      ) : null}
+      ) : (
+        // Instructor equivalent of the admin's "+ New Subject" button above —
+        // lets them add a chapter of their own without an admin having to do
+        // it for them first. The server assigns it to their own linked
+        // teacher card automatically (see create-course.tsx and
+        // backend/app/api/routes/courses.py's create_course), so there's no
+        // subject/teacher picker here.
+        <Scalable style={styles.actionButton} onPress={() => router.push('/admin/create-course')}>
+          <Text style={styles.actionButtonIcon}>＋</Text>
+          <Text style={styles.actionButtonText}>New Chapter</Text>
+        </Scalable>
+      )}
 
       <View style={styles.sectionTitleRow}>
         <Text style={styles.sectionTitle}>{isAdmin ? 'All subjects' : 'Chapters you manage'}</Text>

@@ -14,6 +14,7 @@ export default function AdminLayout() {
       }}>
       <Stack.Screen name="index" options={{ title: 'Manage Content' }} />
       <Stack.Screen name="create-subject" options={{ title: 'New Subject', presentation: 'modal' }} />
+      <Stack.Screen name="create-course" options={{ title: 'New Chapter', presentation: 'modal' }} />
       <Stack.Screen name="instructors" options={{ title: 'Instructors' }} />
       <Stack.Screen name="users" options={{ title: 'AI Question Limits' }} />
       <Stack.Screen name="video-views" options={{ title: 'Video View Limits' }} />
