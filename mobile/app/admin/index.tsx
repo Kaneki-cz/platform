@@ -58,18 +58,25 @@ export default function AdminHomeScreen() {
           <View style={styles.adminActions}>
             {/* Gradient primary action + bordered pill secondary action
                 (2026 redesign pass) — was two flat same-color rectangles;
-                the gradient now marks which action is primary at a glance. */}
-            <Pressable onPress={() => router.push('/admin/create-subject')}>
-              {({ pressed }) => (
-                <LinearGradient
-                  colors={gradientBrand}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.actionButton, pressed && styles.actionButtonPressed]}
-                >
-                  <Text style={styles.actionButtonText}>+ New Subject</Text>
-                </LinearGradient>
-              )}
+                the gradient now marks which action is primary at a glance.
+                The gradient is an absolutely-filled sibling BEHIND the label
+                rather than the label being a child of <LinearGradient> —
+                this button's text was rendering invisible on at least one
+                device with the old child-of-LinearGradient nesting (cause
+                never pinned down), so the label is now a plain sibling
+                <Text> stacked on top by ordinary z-order, which sidesteps
+                whatever that was regardless of its actual cause. */}
+            <Pressable
+              onPress={() => router.push('/admin/create-subject')}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
+            >
+              <LinearGradient
+                colors={gradientBrand}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <Text style={styles.actionButtonText}>+ New Subject</Text>
             </Pressable>
           </View>
           <Pressable
@@ -168,6 +175,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   actionButtonPressed: { opacity: 0.85 },
   // Explicit fontSize/fontFamily here (rather than relying on RN's host
