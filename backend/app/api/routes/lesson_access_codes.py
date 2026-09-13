@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import ensure_can_manage_subject, get_current_user, require_instructor_or_admin
+from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
 from app.db.database import get_db
-from app.models.course import Course
 from app.models.lesson import Lesson
 from app.models.lesson_access_code import LessonAccessCode
 from app.models.user import User, UserRole
@@ -57,13 +56,6 @@ def _get_lesson_or_404(db: Session, lesson_id: uuid.UUID) -> Lesson:
     return lesson
 
 
-def _subject_id_of_lesson(db: Session, lesson: Lesson) -> uuid.UUID:
-    course = db.get(Course, lesson.course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course.subject_id
-
-
 @router.get("/api/v1/lessons/{lesson_id}/codes", response_model=list[AccessCodeOut])
 def list_lesson_codes(
     lesson_id: uuid.UUID,
@@ -71,7 +63,7 @@ def list_lesson_codes(
     current_user: User = Depends(require_instructor_or_admin),
 ) -> list[AccessCodeOut]:
     lesson = _get_lesson_or_404(db, lesson_id)
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
 
     codes = (
         db.query(LessonAccessCode)
@@ -103,7 +95,7 @@ def generate_lesson_codes(
     app/api/routes/lessons.py's get_lesson and
     app/api/routes/courses.py's _annotate_code_gate."""
     lesson = _get_lesson_or_404(db, lesson_id)
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
 
     fresh_codes = _generate_unique_codes(db, payload.count)
     rows = [LessonAccessCode(lesson_id=lesson_id, code=code) for code in fresh_codes]
@@ -130,7 +122,7 @@ def delete_lesson_code(
     would silently take a video away from a student who already unlocked
     it."""
     lesson = _get_lesson_or_404(db, lesson_id)
-    ensure_can_manage_subject(db, current_user, _subject_id_of_lesson(db, lesson))
+    ensure_can_manage_course(db, current_user, lesson.course_id)
 
     row = (
         db.query(LessonAccessCode)
