@@ -14,10 +14,17 @@ import { colors, gradientBrand, radius, spacing } from '@/constants/theme';
 const SECRET_TAP_COUNT = 7;
 const SECRET_TAP_WINDOW_MS = 2000;
 
+// The app's name and developer credit — shown as fixed text regardless of
+// the ar/en toggle (a brand wordmark and a byline aren't translated UI
+// copy). APP_NAME is split into two <Text> runs styled with the two stops
+// of the brand gradient (colors.gradientBrand) to read as a two-tone
+// wordmark without pulling in a MaskedView dependency just for gradient
+// text — see the title/titleAccent* styles below.
+const APP_NAME = ['OME', 'GA'] as const;
+const DEV_CREDIT = "Developed by Mr/A'DASH";
+
 const STRINGS = {
   ar: {
-    title: 'منصة الفيزياء',
-    subtitle: 'سجّل دخولك عشان تكمل التعلم',
     email: 'البريد الإلكتروني',
     password: 'كلمة المرور',
     logIn: 'تسجيل الدخول',
@@ -25,8 +32,6 @@ const STRINGS = {
     genericError: 'حصلت مشكلة. حاول تاني.',
   },
   en: {
-    title: 'Physics Platform',
-    subtitle: 'Log in to continue learning',
     email: 'Email',
     password: 'Password',
     logIn: 'Log In',
@@ -98,9 +103,12 @@ export default function LoginScreen() {
       </LinearGradient>
 
       <Pressable onPress={onTitlePress}>
-        <Text style={styles.title}>{t.title}</Text>
+        <Text style={styles.title}>
+          <Text style={styles.titleAccentStart}>{APP_NAME[0]}</Text>
+          <Text style={styles.titleAccentEnd}>{APP_NAME[1]}</Text>
+        </Text>
       </Pressable>
-      <Text style={styles.subtitle}>{t.subtitle}</Text>
+      <Text style={styles.subtitle}>{DEV_CREDIT}</Text>
 
       <TextInput
         style={styles.input}
@@ -168,8 +176,31 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   logoMarkText: { color: colors.onPrimary, fontSize: 34, fontWeight: '700' },
-  title: { fontSize: 28, fontWeight: '700', textAlign: 'center', color: colors.text, letterSpacing: 0.2 },
-  subtitle: { fontSize: 15, color: colors.textMuted, textAlign: 'center', marginTop: spacing.sm, marginBottom: 32 },
+  // The wordmark: two <Text> runs (see APP_NAME above) colored with the two
+  // stops of gradientBrand — cyan into violet, the same direction as the Ω
+  // mark above it — plus bold weight, wide tracking and a soft cyan glow so
+  // it reads as a brand name, not a plain screen title.
+  title: {
+    fontSize: 38,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 5,
+    textShadowColor: gradientBrand[0] + '40',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 14,
+  },
+  titleAccentStart: { color: gradientBrand[0] },
+  titleAccentEnd: { color: gradientBrand[1] },
+  subtitle: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textAlign: 'center',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: spacing.sm,
+    marginBottom: 32,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
