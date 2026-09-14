@@ -8,6 +8,7 @@ import type {
   Course,
   CourseCreateInput,
   CourseDetail,
+  CourseStudentReport,
   CourseUpdateInput,
   ExamAdmin,
   ExamAnswerSubmit,
@@ -412,6 +413,14 @@ export function myManagedCourses() {
  * aggregate itself. */
 export function myDashboard() {
   return request<TeacherDashboard>('/api/v1/courses/mine/dashboard');
+}
+
+/** One chapter's student-activity report — every student who has opened a
+ * lecture or attempted an exam in this chapter, with exactly which
+ * lectures/exams they still haven't touched. Backs the Teacher Dashboard's
+ * per-chapter report screen (app/admin/course/[id]/report.tsx). */
+export function getCourseStudentReport(courseId: string) {
+  return request<CourseStudentReport>(`/api/v1/courses/${courseId}/student-report`);
 }
 
 // --- Courses & lessons --------------------------------------------------

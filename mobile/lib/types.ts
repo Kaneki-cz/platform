@@ -120,6 +120,30 @@ export interface VideoActivity {
   low_completion_views_count: number;
 }
 
+// One row in a chapter's student report (GET
+// /api/v1/courses/{id}/student-report) — see lib/api.ts's
+// getCourseStudentReport. There's no fixed class roster in this app, so this
+// only ever lists students who have touched the chapter at all (opened a
+// lecture or attempted an exam); missing_lesson_titles/missing_exam_titles
+// are exactly what that student has zero activity on.
+export interface StudentReportRow {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  watched_lessons_count: number;
+  missing_lesson_titles: string[];
+  attempted_exams_count: number;
+  missing_exam_titles: string[];
+}
+
+export interface CourseStudentReport {
+  course_id: string;
+  course_title: string;
+  lectures_count: number;
+  exams_count: number;
+  students: StudentReportRow[];
+}
+
 // Aggregated stats backing the Teacher Dashboard screen — same chapter
 // scoping as ManagedCourse above (every chapter for an admin, only the
 // instructor's own linked chapters otherwise), rolled up into counts + exam

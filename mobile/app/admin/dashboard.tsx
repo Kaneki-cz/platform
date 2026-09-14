@@ -1,6 +1,15 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ImageSourcePropType,
+} from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
 import { myDashboard } from '@/lib/api';
@@ -33,6 +42,7 @@ const STRINGS_EMPTY = "لسه معندكش فصول — ضيف فصل من ال�
 
 export default function TeacherDashboardScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<TeacherDashboard | null>(null);
 
   useFocusEffect(
@@ -136,9 +146,15 @@ export default function TeacherDashboardScreen() {
           ) : null}
 
           <SectionLabel color={colors.accent} label="الفصول" />
+          <Text style={styles.chapHint}>اضغط على أي فصل عشان تشوف تقرير الطلاب بتاعه</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chapScroll}>
             {data.chapters.map((c, index) => (
-              <ChapterCard key={c.id} chapter={c} color={BRAND_CYCLE[index % BRAND_CYCLE.length]} />
+              <ChapterCard
+                key={c.id}
+                chapter={c}
+                color={BRAND_CYCLE[index % BRAND_CYCLE.length]}
+                onPress={() => router.push(`/admin/course/${c.id}/report`)}
+              />
             ))}
           </ScrollView>
 
@@ -240,9 +256,17 @@ function KpiTile({
   );
 }
 
-function ChapterCard({ chapter, color }: { chapter: DashboardChapter; color: string }) {
+function ChapterCard({
+  chapter,
+  color,
+  onPress,
+}: {
+  chapter: DashboardChapter;
+  color: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.chapCard}>
+    <Pressable style={({ pressed }) => [styles.chapCard, pressed && styles.chapCardPressed]} onPress={onPress}>
       <View style={[styles.chapCover, { backgroundColor: color + '1f' }]}>
         <Image source={chapterTopicIcon(chapter.title)} style={[styles.chapIcon, { tintColor: color }]} />
       </View>
@@ -259,7 +283,7 @@ function ChapterCard({ chapter, color }: { chapter: DashboardChapter; color: str
           </Text>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -338,6 +362,7 @@ const styles = StyleSheet.create({
   tagIcon: { width: 11, height: 11, tintColor: colors.accent },
   tagText: { fontSize: 10.5, color: colors.accent, fontFamily: fonts.bold },
 
+  chapHint: { fontSize: 10.5, color: colors.textFaint, marginBottom: 8, textAlign: 'right' },
   chapScroll: { marginHorizontal: -2 },
   chapCard: {
     width: 150,
@@ -348,6 +373,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginEnd: 10,
   },
+  chapCardPressed: { opacity: 0.85 },
   chapCover: { height: 78, alignItems: 'center', justifyContent: 'center' },
   chapIcon: { width: 28, height: 28 },
   chapBody: { padding: 11 },
