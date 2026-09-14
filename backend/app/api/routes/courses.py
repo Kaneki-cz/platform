@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_current_user, require_admin, require_instructor_or_admin
+from app.api.deps import ensure_can_manage_course, get_current_user, require_admin, require_instructor_or_admin
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
@@ -21,9 +21,11 @@ from app.schemas.course import (
     CourseDetailOut,
     CourseOut,
     CourseUpdate,
+    CourseStudentReportOut,
     DashboardChapterOut,
     ExamSummaryOut,
     ManagedCourseOut,
+    StudentReportRow,
     TeacherDashboardOut,
     VideoActivityOut,
 )
@@ -362,6 +364,82 @@ def my_dashboard(
         pass_rate_percent=(total_passed / total_attempts * 100) if total_attempts else None,
         chapters=chapters_out,
         video_activity=video_activity,
+    )
+
+
+@router.get("/{course_id}/student-report", response_model=CourseStudentReportOut)
+def course_student_report(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> CourseStudentReportOut:
+    """One row per student who has touched this chapter at all (opened a
+    lecture, or attempted an exam) — see StudentReportRow for why there's no
+    fixed roster to start from. Answers "who hasn't watched X / hasn't taken
+    Y" directly: missing_lesson_titles/missing_exam_titles are exactly the
+    titles a given student has zero activity on."""
+    course = db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    ensure_can_manage_course(db, current_user, course_id)
+
+    lessons = db.query(Lesson).filter(Lesson.course_id == course_id).order_by(Lesson.order_index).all()
+    lesson_titles = {lesson.id: lesson.title for lesson in lessons}
+
+    exams = db.query(Exam).filter(Exam.course_id == course_id).order_by(Exam.order_index).all()
+    exam_titles = {exam.id: exam.title for exam in exams}
+
+    watched_by_user: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    if lesson_titles:
+        rows = (
+            db.query(LessonProgress.user_id, LessonProgress.lesson_id)
+            .filter(LessonProgress.lesson_id.in_(lesson_titles.keys()))
+            .all()
+        )
+        for user_id, lesson_id in rows:
+            watched_by_user[user_id].add(lesson_id)
+
+    # Only a completed attempt (submitted_at set) counts as "took the exam"
+    # — same rule as everywhere else exam results are surfaced (see
+    # my_dashboard above and _annotate_exam_gate below).
+    attempted_by_user: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    if exam_titles:
+        rows = (
+            db.query(ExamAttempt.user_id, ExamAttempt.exam_id)
+            .filter(ExamAttempt.exam_id.in_(exam_titles.keys()), ExamAttempt.submitted_at.isnot(None))
+            .all()
+        )
+        for user_id, exam_id in rows:
+            attempted_by_user[user_id].add(exam_id)
+
+    student_ids = set(watched_by_user) | set(attempted_by_user)
+    students_out: list[StudentReportRow] = []
+    if student_ids:
+        users = db.query(User).filter(User.id.in_(student_ids)).all()
+        for u in users:
+            watched_ids = watched_by_user.get(u.id, set())
+            attempted_ids = attempted_by_user.get(u.id, set())
+            students_out.append(
+                StudentReportRow(
+                    user_id=u.id,
+                    full_name=u.full_name,
+                    email=u.email,
+                    watched_lessons_count=len(watched_ids),
+                    missing_lesson_titles=[title for lid, title in lesson_titles.items() if lid not in watched_ids],
+                    attempted_exams_count=len(attempted_ids),
+                    missing_exam_titles=[title for eid, title in exam_titles.items() if eid not in attempted_ids],
+                )
+            )
+    # Students with the most gaps (unwatched lectures + un-attempted exams)
+    # float to the top — the ones actually worth a teacher's attention.
+    students_out.sort(key=lambda s: len(s.missing_lesson_titles) + len(s.missing_exam_titles), reverse=True)
+
+    return CourseStudentReportOut(
+        course_id=course.id,
+        course_title=course.title,
+        lectures_count=len(lesson_titles),
+        exams_count=len(exam_titles),
+        students=students_out,
     )
 
 

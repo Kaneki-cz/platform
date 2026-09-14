@@ -203,6 +203,40 @@ class TeacherDashboardOut(BaseModel):
     video_activity: VideoActivityOut | None = None
 
 
+class StudentReportRow(BaseModel):
+    """One student's row in a chapter's student-activity report — see GET
+    /api/v1/courses/{course_id}/student-report. This platform has no fixed
+    class roster/enrollment (any student can open any chapter), so "the
+    students of this chapter" is inferred from real activity: everyone who
+    has EITHER opened at least one of its lectures OR attempted one of its
+    exams. watched_lessons_count counts a lecture as "watched" the moment a
+    LessonProgress row exists for it (i.e. the student opened it at all —
+    not a completion-percent threshold), so a teacher can tell "never
+    opened" apart from "opened but didn't finish"."""
+
+    user_id: uuid.UUID
+    full_name: str | None
+    email: str
+    watched_lessons_count: int
+    missing_lesson_titles: list[str]
+    attempted_exams_count: int
+    missing_exam_titles: list[str]
+
+
+class CourseStudentReportOut(BaseModel):
+    """Backs the Teacher Dashboard's per-chapter "who hasn't watched / who
+    hasn't taken the exam" report screen. lectures_count/exams_count are the
+    chapter's totals (for computing each row's X/Y), students is every
+    student who has touched this chapter at all, sorted by
+    CourseStudentReportOut so the ones with the most gaps float to the top."""
+
+    course_id: uuid.UUID
+    course_title: str
+    lectures_count: int
+    exams_count: int
+    students: list[StudentReportRow] = []
+
+
 class CourseCreate(BaseModel):
     # Nullable because an instructor creating their own chapter never sends
     # one — the server derives it from their linked TeacherProfile instead
