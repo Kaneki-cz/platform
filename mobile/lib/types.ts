@@ -107,6 +107,19 @@ export interface DashboardChapter {
   avg_score_percent: number | null;
 }
 
+// Real watch-activity rollup for the dashboard's "نشاط المشاهدة" section —
+// built server-side from LessonProgress.completion_percent (reported by
+// app/lessons/[id].tsx on every ~10% step of playback, see updateProgress
+// in lib/api.ts). null on TeacherDashboard below when nobody has watched
+// anything in any managed chapter yet.
+export interface VideoActivity {
+  watched_lessons_count: number;
+  total_views: number;
+  avg_completion_percent: number;
+  completed_views_count: number;
+  low_completion_views_count: number;
+}
+
 // Aggregated stats backing the Teacher Dashboard screen — same chapter
 // scoping as ManagedCourse above (every chapter for an admin, only the
 // instructor's own linked chapters otherwise), rolled up into counts + exam
@@ -118,6 +131,7 @@ export interface TeacherDashboard {
   avg_score_percent: number | null;
   pass_rate_percent: number | null;
   chapters: DashboardChapter[];
+  video_activity: VideoActivity | null;
 }
 
 export interface Lesson {

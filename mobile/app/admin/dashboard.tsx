@@ -8,6 +8,13 @@ import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon, icons } from '@/lib/icons';
 import type { DashboardChapter, TeacherDashboard } from '@/lib/types';
 
+// Same spirit as WEAK_SCORE_THRESHOLD below, but for the video-activity
+// card — mirrors the backend's own VIDEO_COMPLETED_THRESHOLD /
+// VIDEO_LOW_COMPLETION_THRESHOLD (app/api/routes/courses.py) purely for the
+// progress-bar color cutoff below; the actual completed/low-completion
+// COUNTS always come straight from the server, never recomputed here.
+const VIDEO_COMPLETION_GOOD_THRESHOLD = 70;
+
 // Cycles through the app's 4 brand colors in a fixed order — same spirit as
 // admin/index.tsx's old SUBJECT_ACCENTS rotation — so the KPI row and the
 // chapter cards read as distinct facts/items instead of one flat block of
@@ -136,20 +143,66 @@ export default function TeacherDashboardScreen() {
           </ScrollView>
 
           <SectionLabel color={colors.textFaint} label="نشاط المشاهدة" />
-          <View style={styles.soonCard}>
-            <View style={styles.soonTop}>
-              <View style={styles.soonIconWrap}>
-                <Image source={icons.eye} style={styles.soonIcon} />
+          {data.video_activity ? (
+            <View style={styles.watchCard}>
+              <View style={styles.watchTop}>
+                <View style={styles.watchIconWrap}>
+                  <Image source={icons.eye} style={styles.watchIcon} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.watchTitle}>متوسط نسبة المشاهدة</Text>
+                  <Text style={styles.watchMeta}>
+                    {data.video_activity.watched_lessons_count} محاضرة اتشافت من أصل {data.lectures_count} ·{' '}
+                    {data.video_activity.total_views} مشاهدة مسجلة
+                  </Text>
+                </View>
+                <Text style={styles.watchPercent}>{Math.round(data.video_activity.avg_completion_percent)}%</Text>
               </View>
-              <Text style={styles.soonTitle}>مين بيشاهد ومين بيتخطى</Text>
-              <View style={styles.soonBadge}>
-                <Text style={styles.soonBadgeText}>قريبًا</Text>
+              <View style={styles.track}>
+                <View
+                  style={[
+                    styles.fill,
+                    {
+                      width: `${Math.min(100, Math.max(2, Math.round(data.video_activity.avg_completion_percent)))}%`,
+                      backgroundColor:
+                        data.video_activity.avg_completion_percent >= VIDEO_COMPLETION_GOOD_THRESHOLD
+                          ? colors.violet
+                          : colors.accent,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.watchChipsRow}>
+                <View style={styles.watchChip}>
+                  <Image source={icons.shieldCheck} style={[styles.watchChipIcon, { tintColor: colors.success }]} />
+                  <Text style={styles.watchChipText}>
+                    <Text style={styles.watchChipN}>{data.video_activity.completed_views_count}</Text> خلّصوا الفيديو
+                    كامل
+                  </Text>
+                </View>
+                <View style={styles.watchChip}>
+                  <Image source={icons.warningTriangle} style={[styles.watchChipIcon, { tintColor: colors.accent }]} />
+                  <Text style={styles.watchChipText}>
+                    <Text style={styles.watchChipN}>{data.video_activity.low_completion_views_count}</Text> متخطيين
+                    نص الفيديو
+                  </Text>
+                </View>
               </View>
             </View>
-            <Text style={styles.soonDesc}>
-              هيتقاس تلقائي أول ما نضيف تتبع مشاهدة الفيديو للمحاضرات — هيوريك مين بيفوّت أجزاء ومين خلص الفيديو كامل.
-            </Text>
-          </View>
+          ) : (
+            <View style={styles.soonCard}>
+              <View style={styles.soonTop}>
+                <View style={styles.soonIconWrap}>
+                  <Image source={icons.eye} style={styles.soonIcon} />
+                </View>
+                <Text style={styles.soonTitle}>لسه معندناش بيانات مشاهدة</Text>
+              </View>
+              <Text style={styles.soonDesc}>
+                هتظهر هنا تلقائي أول ما الطلاب يبدأوا يتفرجوا على محاضرات الفيديو — هتوريك مين بيفوّت أجزاء ومين خلص
+                الفيديو كامل.
+              </Text>
+            </View>
+          )}
         </>
       )}
     </ScrollView>
@@ -322,16 +375,42 @@ const styles = StyleSheet.create({
   },
   soonIcon: { width: 17, height: 17, tintColor: colors.textMuted },
   soonTitle: { flex: 1, fontSize: 13.5, color: colors.text, fontFamily: fonts.bold },
-  soonBadge: {
-    backgroundColor: colors.surfaceAlt,
+  soonDesc: { fontSize: 12, color: colors.textMuted, lineHeight: 19 },
+
+  watchCard: {
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+    borderRadius: radius.lg,
+    padding: 16,
   },
-  soonBadgeText: { fontSize: 10, color: colors.textFaint, fontFamily: fonts.semiBold },
-  soonDesc: { fontSize: 12, color: colors.textMuted, lineHeight: 19 },
+  watchTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  watchIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: colors.violet + '1f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  watchIcon: { width: 17, height: 17, tintColor: colors.violet },
+  watchTitle: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 2 },
+  watchMeta: { fontSize: 10.5, color: colors.textFaint },
+  watchPercent: { fontSize: 20, color: colors.violet, fontFamily: fonts.bold },
+  watchChipsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  watchChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  watchChipIcon: { width: 13, height: 13 },
+  watchChipText: { flex: 1, fontSize: 10.5, color: colors.textMuted, lineHeight: 14 },
+  watchChipN: { color: colors.text, fontFamily: fonts.bold },
 
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
 });
