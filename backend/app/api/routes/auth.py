@@ -72,7 +72,9 @@ def register(request: Request, payload: UserCreate, db: Session = Depends(get_db
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> Token:
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="No account with this email")
+        # Don't reveal whether the email is registered — return the same
+        # generic error as a wrong code so an attacker can't enumerate accounts.
+        raise HTTPException(status_code=400, detail="Incorrect code")
 
     if user.is_verified:
         # Already done (e.g. a stale verify screen re-submitted) — log them
@@ -110,11 +112,14 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
 @limiter.limit("5/minute")
 def resend_verification(request: Request, payload: ResendVerificationRequest, db: Session = Depends(get_db)) -> dict:
     user = db.query(User).filter(User.email == payload.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="No account with this email")
 
-    if user.is_verified:
-        raise HTTPException(status_code=400, detail="Email already verified")
+    # Return the same success message whether the email exists or not —
+    # this prevents account enumeration (an attacker probing for registered
+    # addresses would always see 200 and learn nothing).  Same treatment for
+    # already-verified accounts: silently succeed rather than confirming they
+    # exist and are verified.
+    if not user or user.is_verified:
+        return {"message": "If this email is registered and unverified, a new code has been sent"}
 
     if user.verification_code_sent_at:
         elapsed = (datetime.now(timezone.utc) - user.verification_code_sent_at).total_seconds()
@@ -131,7 +136,7 @@ def resend_verification(request: Request, payload: ResendVerificationRequest, db
         logger.exception("Failed to send verification email to %s", user.email)
         raise HTTPException(status_code=500, detail="Could not send the email — try again shortly")
 
-    return {"message": "Verification code sent"}
+    return {"message": "If this email is registered and unverified, a new code has been sent"}
 
 
 @router.post("/login", response_model=Token)
