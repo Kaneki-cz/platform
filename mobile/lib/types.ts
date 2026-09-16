@@ -138,11 +138,6 @@ export interface StudentReportRow {
   missing_lesson_titles: string[];
   attempted_exams_count: number;
   missing_exam_titles: string[];
-  // Summed across just this chapter's lectures (see LessonProgress.skip_count
-  // /skipped_seconds on the backend) — 0 for a student with no detected
-  // forward-skips here.
-  skip_count: number;
-  skipped_seconds: number;
 }
 
 export interface CourseStudentReport {
@@ -151,36 +146,6 @@ export interface CourseStudentReport {
   lectures_count: number;
   exams_count: number;
   students: StudentReportRow[];
-}
-
-// One (student, lecture) pair worth a teacher's attention — crossed the
-// dashboard's forward-skip flagging bar. Cross-chapter (every chapter this
-// teacher manages), sorted worst-first, capped to a handful — a nudge
-// list, not a full audit log. See StudentReportRow.skip_count for the same
-// numbers scoped to just one chapter.
-export interface VideoSkipFlag {
-  user_id: string;
-  full_name: string | null;
-  email: string;
-  lesson_title: string;
-  course_title: string;
-  skip_count: number;
-  skipped_seconds: number;
-}
-
-// One suspiciously fast completed exam attempt — same is_fast rule as
-// ExamAttemptRow below, rolled up across every chapter this teacher
-// manages. Sorted fastest-first, capped to a handful.
-export interface ExamSpeedFlag {
-  user_id: string;
-  full_name: string | null;
-  email: string;
-  exam_title: string;
-  course_title: string;
-  score_percent: number | null;
-  duration_seconds: number;
-  question_count: number;
-  seconds_per_question: number;
 }
 
 // Aggregated stats backing the Teacher Dashboard screen — same chapter
@@ -195,46 +160,6 @@ export interface TeacherDashboard {
   pass_rate_percent: number | null;
   chapters: DashboardChapter[];
   video_activity: VideoActivity | null;
-  video_skip_flags: VideoSkipFlag[];
-  exam_speed_flags: ExamSpeedFlag[];
-}
-
-// One row in the Teacher Dashboard's cross-chapter grades matrix — see
-// GET /api/v1/courses/mine/grades-matrix. student_code is null until that
-// student has opened their own QR-code screen at least once (see
-// getMyStudentCode below) — never backfilled in bulk, so an inactive
-// student simply shows nothing in that column.
-export interface StudentExamGradeRow {
-  user_id: string;
-  full_name: string | null;
-  email: string;
-  student_code: string | null;
-  course_id: string;
-  course_title: string;
-  // The chapter's OWN assigned grade level (Course.grade_level — one of
-  // GRADE_LEVELS below), not the student's own enrolled grade. null for a
-  // chapter that was never filed under one. Backs the Dashboard's
-  // grade-level filter chips and the matching filter on the Excel export.
-  course_grade_level: GradeLevel | null;
-  exam_id: string;
-  exam_title: string;
-  correct_count: number;
-  question_count: number;
-  score_percent: number | null;
-  // Reuses ExamAttempt.passed — lets the table/export color this row
-  // without recomputing anything against passing_percent client-side.
-  passed: boolean;
-  submitted_at: string;
-  // This student's average across their last-30-days completed attempts,
-  // across every chapter this teacher manages (not just this row's exam).
-  month_avg_score_percent: number | null;
-  // This student's average across ALL of their completed attempts within
-  // this row's own chapter — all-time, not time-boxed.
-  chapter_avg_score_percent: number | null;
-}
-
-export interface GradesMatrixData {
-  rows: StudentExamGradeRow[];
 }
 
 export interface Lesson {
@@ -325,26 +250,22 @@ export interface EnrollmentSubmit {
   group_id: string | null;
 }
 
-// ── Attendance (per-student QR code + group scanning) ────────────────────────
-// See backend/app/api/routes/attendance.py. A student's code is permanent
-// (unlike LessonAccessCode's single-use codes) and lazily generated the
-// first time GET /api/v1/students/me/code is called for their account —
-// see app/(tabs)/profile.tsx, which renders it as a QR. A teacher/admin then
-// scans it from a specific TeacherGroup's scanner screen
-// (app/admin/attendance/[groupId].tsx) to mark that student present for
-// today's real-life session — entirely separate from LessonProgress
-// (recorded-video watch tracking).
+// ── Attendance (per-student QR code + group scanning) ──────────────────────────
+// Real in-person attendance for a physical tutoring session — separate from
+// LessonProgress (video-watch tracking) and LessonAccessCode (per-lecture
+// unlock codes). See backend/app/models/attendance.py.
 
-/** This student's own permanent attendance code — see GET
- * /api/v1/students/me/code. */
+// GET /api/v1/students/me/code — a student's own permanent code, generated
+// lazily server-side the first time it's requested. Rendered as a QR code
+// on their profile screen (see app/(tabs)/profile.tsx).
 export interface StudentCode {
   code: string;
 }
 
-/** What the scanner screen gets back right after POST
- * /api/v1/attendance/scan — enough to flash a name + already_marked state
- * without a second round trip. already_marked=true is a harmless no-op (the
- * same student was already scanned in this group today), never an error. */
+// What POST /api/v1/attendance/scan returns right after a successful scan —
+// enough for the scanner screen to flash a name without a second round
+// trip. already_marked is true (not an error) when this student was
+// already scanned into this group today.
 export interface AttendanceScanResult {
   user_id: string;
   full_name: string | null;
@@ -355,7 +276,7 @@ export interface AttendanceScanResult {
   already_marked: boolean;
 }
 
-/** One present student in GroupAttendanceData below. */
+// One present student in GroupAttendance below.
 export interface AttendanceRow {
   user_id: string;
   full_name: string | null;
@@ -363,9 +284,9 @@ export interface AttendanceRow {
   scanned_at: string;
 }
 
-/** GET /api/v1/teachers/{teacherId}/groups/{groupId}/attendance — who's been
- * scanned present in this group on a given day (today by default). */
-export interface GroupAttendanceData {
+// GET /api/v1/teachers/{teacherId}/groups/{groupId}/attendance — who's been
+// scanned present in this group today (see app/admin/attendance/[groupId].tsx).
+export interface GroupAttendance {
   group_id: string;
   group_name: string;
   session_date: string;
@@ -416,8 +337,6 @@ export interface RedeemCodeResult {
 export interface ProgressEntry {
   lesson_id: string;
   completion_percent: number;
-  skip_count: number;
-  skipped_seconds: number;
 }
 
 export interface VisualizationPayload {
@@ -613,33 +532,6 @@ export interface ExamAdmin {
   order_index: number;
   passing_percent: number;
   question_count: number;
-}
-
-// One student's one completed sitting of an exam — the teacher-facing
-// "grades" view (see getExamAttempts in lib/api.ts). is_fast flags an
-// attempt whose average time-per-question was suspiciously low — a nudge
-// for the teacher, never something that blocks or penalizes the student.
-export interface ExamAttemptRow {
-  attempt_id: string;
-  user_id: string;
-  full_name: string | null;
-  email: string;
-  score_percent: number | null;
-  // Raw "X correct" — pair with the parent ExamAttemptsData.question_count
-  // for the "X/Y" denominator.
-  correct_count: number;
-  passed: boolean;
-  duration_seconds: number | null;
-  started_at: string;
-  submitted_at: string | null;
-  is_fast: boolean;
-}
-
-export interface ExamAttemptsData {
-  exam_id: string;
-  exam_title: string;
-  question_count: number;
-  attempts: ExamAttemptRow[];
 }
 
 export interface ExamCreateInput {

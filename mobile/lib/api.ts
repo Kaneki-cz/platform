@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from './config';
 import type {
   AskResponse,
+  AttendanceScanResult,
   ChatMessage,
   Course,
   CourseCreateInput,
@@ -12,6 +13,7 @@ import type {
   CourseUpdateInput,
   EnrollmentStatus,
   EnrollmentSubmit,
+  GroupAttendance,
   ExamAdmin,
   ExamAnswerSubmit,
   ExamCreateInput,
@@ -32,6 +34,7 @@ import type {
   QuestionAttemptResult,
   QuestionCreateInput,
   QuestionUpdateInput,
+  StudentCode,
   Subject,
   SubjectDetail,
   Teacher,
@@ -813,6 +816,32 @@ export function deleteTeacherGroup(teacherId: string, groupId: string): Promise<
   return request<void>(`/api/v1/teachers/${teacherId}/groups/${groupId}`, {
     method: 'DELETE',
   });
+}
+
+// ── Attendance (per-student QR code + group scanning) ──────────────────────────
+
+/** The signed-in student's own permanent attendance code — generated
+ * lazily server-side the first time this is called. Rendered as a QR code
+ * on their profile screen — see app/(tabs)/profile.tsx's MyAttendanceCode. */
+export function getMyStudentCode(): Promise<StudentCode> {
+  return request<StudentCode>('/api/v1/students/me/code');
+}
+
+/** Scans one student's code into `groupId` for today — see
+ * app/admin/attendance/[groupId].tsx. Re-scanning the same student on the
+ * same day is a harmless no-op (already_marked: true on the result, not an
+ * error). */
+export function scanAttendance(code: string, groupId: string): Promise<AttendanceScanResult> {
+  return request<AttendanceScanResult>('/api/v1/attendance/scan', {
+    method: 'POST',
+    body: JSON.stringify({ code, group_id: groupId }),
+  });
+}
+
+/** Who's been scanned present in this group today — backs the scanner
+ * screen's live "Present today" list. */
+export function getGroupAttendance(teacherId: string, groupId: string): Promise<GroupAttendance> {
+  return request<GroupAttendance>(`/api/v1/teachers/${teacherId}/groups/${groupId}/attendance`);
 }
 
 // ── Student enrollment ────────────────────────────────────────────────────────
