@@ -2,10 +2,11 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
+from app.core.limiter import limiter
 from app.db.database import get_db
 from app.models.lesson import Lesson
 from app.models.lesson_access_code import LessonAccessCode
@@ -139,7 +140,9 @@ def delete_lesson_code(
 
 
 @router.post("/api/v1/lessons/redeem", response_model=AccessCodeRedeemResponse)
+@limiter.limit("10/minute")
 def redeem_lesson_code(
+    request: Request,
     payload: AccessCodeRedeemRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

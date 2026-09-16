@@ -69,7 +69,8 @@ def register(request: Request, payload: UserCreate, db: Session = Depends(get_db
 
 
 @router.post("/verify-email", response_model=Token)
-def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> Token:
+@limiter.limit("5/minute")
+def verify_email(request: Request, payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> Token:
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
         # Don't reveal whether the email is registered — return the same
