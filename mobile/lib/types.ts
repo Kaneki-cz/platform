@@ -138,6 +138,11 @@ export interface StudentReportRow {
   missing_lesson_titles: string[];
   attempted_exams_count: number;
   missing_exam_titles: string[];
+  // Summed across just this chapter's lectures (see LessonProgress.skip_count
+  // /skipped_seconds on the backend) — 0 for a student with no detected
+  // forward-skips here.
+  skip_count: number;
+  skipped_seconds: number;
 }
 
 export interface CourseStudentReport {
@@ -146,6 +151,36 @@ export interface CourseStudentReport {
   lectures_count: number;
   exams_count: number;
   students: StudentReportRow[];
+}
+
+// One (student, lecture) pair worth a teacher's attention — crossed the
+// dashboard's forward-skip flagging bar. Cross-chapter (every chapter this
+// teacher manages), sorted worst-first, capped to a handful — a nudge
+// list, not a full audit log. See StudentReportRow.skip_count for the same
+// numbers scoped to just one chapter.
+export interface VideoSkipFlag {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  lesson_title: string;
+  course_title: string;
+  skip_count: number;
+  skipped_seconds: number;
+}
+
+// One suspiciously fast completed exam attempt — same is_fast rule as
+// ExamAttemptRow below, rolled up across every chapter this teacher
+// manages. Sorted fastest-first, capped to a handful.
+export interface ExamSpeedFlag {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  exam_title: string;
+  course_title: string;
+  score_percent: number | null;
+  duration_seconds: number;
+  question_count: number;
+  seconds_per_question: number;
 }
 
 // Aggregated stats backing the Teacher Dashboard screen — same chapter
@@ -160,6 +195,8 @@ export interface TeacherDashboard {
   pass_rate_percent: number | null;
   chapters: DashboardChapter[];
   video_activity: VideoActivity | null;
+  video_skip_flags: VideoSkipFlag[];
+  exam_speed_flags: ExamSpeedFlag[];
 }
 
 export interface Lesson {
@@ -294,6 +331,8 @@ export interface RedeemCodeResult {
 export interface ProgressEntry {
   lesson_id: string;
   completion_percent: number;
+  skip_count: number;
+  skipped_seconds: number;
 }
 
 export interface VisualizationPayload {
@@ -489,6 +528,30 @@ export interface ExamAdmin {
   order_index: number;
   passing_percent: number;
   question_count: number;
+}
+
+// One student's one completed sitting of an exam — the teacher-facing
+// "grades" view (see getExamAttempts in lib/api.ts). is_fast flags an
+// attempt whose average time-per-question was suspiciously low — a nudge
+// for the teacher, never something that blocks or penalizes the student.
+export interface ExamAttemptRow {
+  attempt_id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  score_percent: number | null;
+  passed: boolean;
+  duration_seconds: number | null;
+  started_at: string;
+  submitted_at: string | null;
+  is_fast: boolean;
+}
+
+export interface ExamAttemptsData {
+  exam_id: string;
+  exam_title: string;
+  question_count: number;
+  attempts: ExamAttemptRow[];
 }
 
 export interface ExamCreateInput {

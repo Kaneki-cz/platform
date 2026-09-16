@@ -27,7 +27,22 @@ interface Props {
    * to the next segment after this one is passed. */
   pauseAtSeconds?: number | null;
   onReachBoundary?: () => void;
+  /** Fires whenever playback jumps forward by more than could be normal
+   * watching (e.g. dragging the scrubber ahead) — the argument is roughly
+   * how many seconds were skipped over. Used to flag "just running through
+   * the video" behavior on the Teacher Dashboard (see lib/api.ts's
+   * reportVideoSkip) — purely informational, never blocks or slows down
+   * playback. Not fired for backward seeks (rewatching), which are normal. */
+  onSkip?: (skippedSeconds: number) => void;
 }
+
+// A tick's player-time advance beyond wall-clock-elapsed-plus-this-many-
+// seconds counts as a forward skip rather than normal 1x playback — loose
+// enough to absorb setInterval/timeUpdate jitter and the occasional
+// buffering catch-up, tight enough to still catch someone dragging the
+// scrubber ahead. Exported so YoutubeLessonPlayer.tsx's own poll-based skip
+// detection uses the exact same threshold.
+export const SKIP_JUMP_TOLERANCE_SECONDS = 6;
 
 /**
  * Real video playback for a lecture. Dispatches to one of two
@@ -60,6 +75,7 @@ export const LessonVideoPlayer = forwardRef<LessonVideoPlayerHandle, Props>(func
         onDurationKnown={props.onDurationKnown}
         pauseAtSeconds={props.pauseAtSeconds}
         onReachBoundary={props.onReachBoundary}
+        onSkip={props.onSkip}
       />
     );
   }
@@ -82,7 +98,7 @@ export const LessonVideoPlayer = forwardRef<LessonVideoPlayerHandle, Props>(func
 const RETRY_DELAYS_MS = [2000, 4000, 8000, 15000, 25000];
 
 const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4LessonPlayer(
-  { url, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary },
+  { url, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary, onSkip },
   ref,
 ) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'readyToPlay' | 'error'>('idle');
@@ -94,6 +110,12 @@ const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4L
   const durationReportedRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Skip detection: compares how far player.currentTime advanced between
+  // two timeUpdate ticks against how much real wall-clock time actually
+  // passed — a big excess means the student scrubbed ahead rather than
+  // just watching. See SKIP_JUMP_TOLERANCE_SECONDS above.
+  const lastTickPlayerTimeRef = useRef<number | null>(null);
+  const lastTickWallClockRef = useRef<number | null>(null);
   // Tracks expo-video's own native fullscreen presentation (entered via the
   // expand button inside `nativeControls`) — that surface renders in its
   // own native layer ABOVE the whole React Native tree, so the segment quiz
@@ -125,6 +147,11 @@ const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4L
         if (pauseAtSeconds != null && seconds < pauseAtSeconds) {
           boundaryFiredRef.current = false;
         }
+        // This is an app-driven seek (retrying a segment), not the student
+        // scrubbing — drop the skip-detection baseline so the next tick
+        // doesn't compare against a stale pre-seek timestamp.
+        lastTickPlayerTimeRef.current = null;
+        lastTickWallClockRef.current = null;
       },
       play: () => player.play(),
       pause: () => player.pause(),
@@ -177,6 +204,17 @@ const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4L
     });
 
     const timeSubscription = player.addListener('timeUpdate', () => {
+      const nowWallClock = Date.now();
+      if (lastTickPlayerTimeRef.current != null && lastTickWallClockRef.current != null) {
+        const wallDeltaSeconds = (nowWallClock - lastTickWallClockRef.current) / 1000;
+        const playerDeltaSeconds = player.currentTime - lastTickPlayerTimeRef.current;
+        if (playerDeltaSeconds > wallDeltaSeconds + SKIP_JUMP_TOLERANCE_SECONDS) {
+          onSkip?.(Math.round(playerDeltaSeconds - wallDeltaSeconds));
+        }
+      }
+      lastTickPlayerTimeRef.current = player.currentTime;
+      lastTickWallClockRef.current = nowWallClock;
+
       if (player.duration > 0) {
         if (!durationReportedRef.current) {
           durationReportedRef.current = true;
@@ -217,7 +255,7 @@ const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4L
         retryTimeoutRef.current = null;
       }
     };
-  }, [player, url, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary]);
+  }, [player, url, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary, onSkip]);
 
   return (
     <View>

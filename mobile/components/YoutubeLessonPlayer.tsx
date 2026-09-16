@@ -2,7 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef,
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 
-import type { LessonVideoPlayerHandle } from './LessonVideoPlayer';
+import { SKIP_JUMP_TOLERANCE_SECONDS, type LessonVideoPlayerHandle } from './LessonVideoPlayer';
 
 interface Props {
   videoId: string;
@@ -10,6 +10,10 @@ interface Props {
   onDurationKnown?: (seconds: number) => void;
   pauseAtSeconds?: number | null;
   onReachBoundary?: () => void;
+  /** Same meaning as the mp4 player's onSkip (see LessonVideoPlayer.tsx) —
+   * fires when polling detects a forward jump bigger than 1x playback
+   * could produce over that same interval. */
+  onSkip?: (skippedSeconds: number) => void;
 }
 
 /**
@@ -50,7 +54,7 @@ interface Props {
  * feature to feel just as snappy.
  */
 export const YoutubeLessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function YoutubeLessonPlayer(
-  { videoId, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary },
+  { videoId, onProgress, onDurationKnown, pauseAtSeconds, onReachBoundary, onSkip },
   ref,
 ) {
   const playerRef = useRef<{
@@ -72,6 +76,11 @@ export const YoutubeLessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(fu
   // same-segment retry after a failed quiz doesn't change pauseAtSeconds,
   // so the effect below alone wouldn't catch that case).
   const boundaryFiredRef = useRef(false);
+  // Same skip-detection approach as the mp4 player (see
+  // LessonVideoPlayer.tsx) — compares how far getCurrentTime() advanced
+  // between two poll ticks against how much real wall-clock time passed.
+  const lastTickPlayerTimeRef = useRef<number | null>(null);
+  const lastTickWallClockRef = useRef<number | null>(null);
 
   useImperativeHandle(
     ref,
@@ -82,6 +91,11 @@ export const YoutubeLessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(fu
         if (pauseAtSeconds != null && seconds < pauseAtSeconds) {
           boundaryFiredRef.current = false;
         }
+        // App-driven seek (retrying a segment), not the student scrubbing —
+        // drop the skip-detection baseline so the next poll tick doesn't
+        // compare against a stale pre-seek timestamp.
+        lastTickPlayerTimeRef.current = null;
+        lastTickWallClockRef.current = null;
       },
       play: () => setPlaying(true),
       pause: () => setPlaying(false),
@@ -130,6 +144,17 @@ export const YoutubeLessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(fu
       if (current == null) return;
       lastKnownSecondsRef.current = current;
 
+      const nowWallClock = Date.now();
+      if (lastTickPlayerTimeRef.current != null && lastTickWallClockRef.current != null) {
+        const wallDeltaSeconds = (nowWallClock - lastTickWallClockRef.current) / 1000;
+        const playerDeltaSeconds = current - lastTickPlayerTimeRef.current;
+        if (playerDeltaSeconds > wallDeltaSeconds + SKIP_JUMP_TOLERANCE_SECONDS) {
+          onSkip?.(Math.round(playerDeltaSeconds - wallDeltaSeconds));
+        }
+      }
+      lastTickPlayerTimeRef.current = current;
+      lastTickWallClockRef.current = nowWallClock;
+
       if (durationRef.current > 0) {
         const percent = Math.min(100, Math.round((current / durationRef.current) * 100));
         onProgress?.(percent);
@@ -152,7 +177,7 @@ export const YoutubeLessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(fu
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [playing, pauseAtSeconds, onProgress, onReachBoundary]);
+  }, [playing, pauseAtSeconds, onProgress, onReachBoundary, onSkip]);
 
   // Keeps our `playing` state (used for the polling interval above, and for
   // resuming correctly after a fullscreen remount) in sync with taps on

@@ -14,6 +14,7 @@ import type {
   EnrollmentSubmit,
   ExamAdmin,
   ExamAnswerSubmit,
+  ExamAttemptsData,
   ExamCreateInput,
   ExamStartResult,
   ExamStatus,
@@ -536,6 +537,19 @@ export function updateProgress(lessonId: string, completionPercent: number) {
   });
 }
 
+/** Reported by the video player (see components/LessonVideoPlayer.tsx)
+ * whenever it detects a forward jump in playback bigger than normal
+ * watching could produce — e.g. dragging the scrubber ahead. Purely
+ * additive on the server (bumps a counter), never blocks or slows down
+ * playback, and errors here are swallowed by the caller the same way
+ * updateProgress's are. */
+export function reportVideoSkip(lessonId: string, skippedSeconds: number) {
+  return request<ProgressEntry>('/api/v1/progress/skip', {
+    method: 'POST',
+    body: JSON.stringify({ lesson_id: lessonId, skipped_seconds: skippedSeconds }),
+  });
+}
+
 // --- Segment quiz questions -------------------------------------------------
 /** Every question for one lecture, ordered by pause_at_seconds (the "no
  * specific pause point" group sorts last), each carrying the current
@@ -712,6 +726,13 @@ export function updateExam(examId: string, input: ExamUpdateInput) {
 
 export function deleteExam(examId: string) {
   return request<void>(`/api/v1/exams/${examId}`, { method: 'DELETE' });
+}
+
+/** Instructor/admin "grades" view — every completed attempt on this exam,
+ * newest first, with is_fast flagging a suspiciously quick one (see
+ * app/admin/exam/[id]/attempts.tsx). */
+export function getExamAttempts(examId: string) {
+  return request<ExamAttemptsData>(`/api/v1/exams/${examId}/attempts`);
 }
 
 /** Instructor/admin — same shape as getLessonQuestionsAdmin but for an

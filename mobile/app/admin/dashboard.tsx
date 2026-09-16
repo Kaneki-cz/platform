@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { myDashboard } from '@/lib/api';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon, icons } from '@/lib/icons';
-import type { DashboardChapter, TeacherDashboard } from '@/lib/types';
+import type { DashboardChapter, ExamSpeedFlag, TeacherDashboard, VideoSkipFlag } from '@/lib/types';
 
 // Same spirit as WEAK_SCORE_THRESHOLD below, but for the video-activity
 // card — mirrors the backend's own VIDEO_COMPLETED_THRESHOLD /
@@ -145,6 +145,20 @@ export default function TeacherDashboardScreen() {
             </>
           ) : null}
 
+          {data.exam_speed_flags.length > 0 ? (
+            <>
+              <SectionLabel color={colors.danger} label="امتحانات بسرعة مريبة" />
+              <View style={styles.flagCard}>
+                <Text style={styles.flagHint}>
+                  متوسط الوقت لكل سؤال قليل جداً — مش بالضرورة غش، بس يستاهل نظرة.
+                </Text>
+                {data.exam_speed_flags.map((f, index) => (
+                  <ExamSpeedFlagRow key={`${f.user_id}-${f.exam_title}-${index}`} flag={f} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
           <SectionLabel color={colors.accent} label="الفصول" />
           <Text style={styles.chapHint}>اضغط على أي فصل عشان تشوف تقرير الطلاب بتاعه</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chapScroll}>
@@ -219,6 +233,18 @@ export default function TeacherDashboardScreen() {
               </Text>
             </View>
           )}
+
+          {data.video_skip_flags.length > 0 ? (
+            <>
+              <SectionLabel color={colors.danger} label="طلاب بيتخطوا الفيديو" />
+              <View style={styles.flagCard}>
+                <Text style={styles.flagHint}>لقّطوا/سحبوا الفيديو للأمام أكتر من مرة بدل ما يتفرجوا عليه فعلاً.</Text>
+                {data.video_skip_flags.map((f, index) => (
+                  <VideoSkipFlagRow key={`${f.user_id}-${f.lesson_title}-${index}`} flag={f} />
+                ))}
+              </View>
+            </>
+          ) : null}
         </>
       )}
     </ScrollView>
@@ -252,6 +278,44 @@ function KpiTile({
       </View>
       <Text style={styles.kpiLabel}>{label}</Text>
       <Text style={styles.kpiValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ExamSpeedFlagRow({ flag }: { flag: ExamSpeedFlag }) {
+  return (
+    <View style={styles.flagRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.flagName} numberOfLines={1}>
+          {flag.full_name?.trim() || flag.email}
+        </Text>
+        <Text style={styles.flagMeta} numberOfLines={1}>
+          {flag.exam_title} · {flag.course_title}
+        </Text>
+      </View>
+      <View style={styles.flagStat}>
+        <Text style={styles.flagStatValue}>{flag.seconds_per_question.toFixed(1)}s</Text>
+        <Text style={styles.flagStatLabel}>لكل سؤال</Text>
+      </View>
+    </View>
+  );
+}
+
+function VideoSkipFlagRow({ flag }: { flag: VideoSkipFlag }) {
+  return (
+    <View style={styles.flagRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.flagName} numberOfLines={1}>
+          {flag.full_name?.trim() || flag.email}
+        </Text>
+        <Text style={styles.flagMeta} numberOfLines={1}>
+          {flag.lesson_title} · {flag.course_title}
+        </Text>
+      </View>
+      <View style={styles.flagStat}>
+        <Text style={styles.flagStatValue}>{flag.skip_count}×</Text>
+        <Text style={styles.flagStatLabel}>{flag.skipped_seconds} ث اتخطت</Text>
+      </View>
     </View>
   );
 }
@@ -439,4 +503,26 @@ const styles = StyleSheet.create({
   watchChipN: { color: colors.text, fontFamily: fonts.bold },
 
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
+
+  flagCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.danger + '33',
+    borderRadius: radius.lg,
+    padding: 14,
+  },
+  flagHint: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: 10, textAlign: 'right' },
+  flagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  flagName: { fontSize: 13, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
+  flagMeta: { fontSize: 11, color: colors.textFaint, marginTop: 2, textAlign: 'right' },
+  flagStat: { alignItems: 'flex-end' },
+  flagStatValue: { fontSize: 14, color: colors.danger, fontFamily: fonts.bold },
+  flagStatLabel: { fontSize: 10, color: colors.textFaint, marginTop: 1 },
 });

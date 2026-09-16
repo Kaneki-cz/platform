@@ -128,6 +128,11 @@ function StudentRow({
           لسه مخدش امتحان: {student.missing_exam_titles.join('، ')}
         </Text>
       ) : null}
+      {student.skip_count > 0 ? (
+        <Text style={styles.skipLine} numberOfLines={1}>
+          ⚠ اتخطى الفيديو {student.skip_count} مرة ({student.skipped_seconds} ثانية)
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -162,4 +167,5 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, color: colors.success, fontFamily: fonts.bold },
   badgeTextWarn: { color: colors.accent },
   gapLine: { fontSize: 11, color: colors.textMuted, marginTop: 8, textAlign: 'right', lineHeight: 16 },
+  skipLine: { fontSize: 11, color: colors.danger, marginTop: 8, textAlign: 'right', fontFamily: fonts.bold },
 });

@@ -189,6 +189,13 @@ export default function ManageCourseExamsScreen() {
               <Text style={styles.actionButtonQuestionsText}>📋 Questions</Text>
             </Pressable>
             <Pressable
+              style={[styles.actionButton, styles.actionButtonAttempts]}
+              onPress={() => router.push(`/admin/exam/${exam.id}/attempts`)}
+              hitSlop={6}
+            >
+              <Text style={styles.actionButtonAttemptsText}>📊 Attempts</Text>
+            </Pressable>
+            <Pressable
               style={[styles.actionButton, styles.actionButtonDelete]}
               onPress={() => onDeleteExam(exam)}
               hitSlop={6}
@@ -332,6 +339,8 @@ const styles = StyleSheet.create({
   },
   actionButtonQuestions: { backgroundColor: colors.primary + '1F' },
   actionButtonQuestionsText: { color: colors.primary, fontSize: 12.5, fontFamily: fonts.bold },
+  actionButtonAttempts: { backgroundColor: colors.violet + '1F' },
+  actionButtonAttemptsText: { color: colors.violet, fontSize: 12.5, fontFamily: fonts.bold },
   actionButtonDelete: { backgroundColor: colors.dangerSurface },
   actionButtonDeleteText: { color: colors.danger, fontSize: 12.5, fontFamily: fonts.bold },
 

@@ -2,7 +2,15 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { getEnrollmentStatus, getLesson, getLessonQuestions, resolveVideoUrl, submitQuestionAttempt, updateProgress } from '@/lib/api';
+import {
+  getEnrollmentStatus,
+  getLesson,
+  getLessonQuestions,
+  reportVideoSkip,
+  resolveVideoUrl,
+  submitQuestionAttempt,
+  updateProgress,
+} from '@/lib/api';
 import { EnrollmentModal } from '@/components/EnrollmentModal';
 import { LessonVideoPlayer, type LessonVideoPlayerHandle } from '@/components/LessonVideoPlayer';
 import { SegmentQuiz } from '@/components/SegmentQuiz';
@@ -193,6 +201,19 @@ export default function LessonScreen() {
     [id],
   );
 
+  // Best-effort cheat-detection nudge for the Teacher Dashboard — see
+  // LessonVideoPlayer's onSkip. Only meaningful for students (an
+  // instructor/admin previewing their own lecture isn't "cheating"), and
+  // never blocks or slows down playback either way.
+  const onVideoSkip = useCallback(
+    (skippedSeconds: number) => {
+      if (!id) return;
+      if (user?.role !== 'student') return;
+      reportVideoSkip(id, skippedSeconds).catch(() => {});
+    },
+    [id, user?.role],
+  );
+
   const onSubmitAnswer = useCallback(async (questionId: string, answer: string) => {
     const result = await submitQuestionAttempt(questionId, answer);
     setAttemptOverrides((prev) => ({ ...prev, [questionId]: result.is_correct }));
@@ -244,6 +265,7 @@ export default function LessonScreen() {
               onDurationKnown={setDuration}
               pauseAtSeconds={nextPauseAtSeconds}
               onReachBoundary={onReachBoundary}
+              onSkip={onVideoSkip}
             />
             {lesson.views_allowed != null ? (
               <Text style={styles.viewsMeta}>{t.viewsLabel(lesson.views_used ?? 0, lesson.views_allowed)}</Text>
