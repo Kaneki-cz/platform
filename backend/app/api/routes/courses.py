@@ -412,7 +412,7 @@ def my_dashboard(
         video_skip_flags = [
             VideoSkipFlagOut(
                 user_id=user.id,
-                full_name=user.full_name,
+                full_name=user.full_name_ar or user.full_name,
                 email=user.email,
                 lesson_title=lesson_title,
                 course_title=course_title,
@@ -459,7 +459,7 @@ def my_dashboard(
                 candidates.append(
                     ExamSpeedFlagOut(
                         user_id=user.id,
-                        full_name=user.full_name,
+                        full_name=user.full_name_ar or user.full_name,
                         email=user.email,
                         exam_title=exam_title,
                         course_title=course_title,
@@ -544,7 +544,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
         .join(User, User.id == ExamAttempt.user_id)
         .join(Course, Course.id == Exam.course_id)
         .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
-        .order_by(Course.id, User.full_name, ExamAttempt.submitted_at.desc())
+        .order_by(Course.id, func.coalesce(User.full_name_ar, User.full_name), ExamAttempt.submitted_at.desc())
         .all()
     )
     if not attempt_rows:
@@ -591,7 +591,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
         rows.append(
             StudentExamGradeRow(
                 user_id=user.id,
-                full_name=user.full_name,
+                full_name=user.full_name_ar or user.full_name,
                 email=user.email,
                 student_code=None,
                 course_id=exam.course_id,
@@ -734,7 +734,7 @@ def course_student_report(
             students_out.append(
                 StudentReportRow(
                     user_id=u.id,
-                    full_name=u.full_name,
+                    full_name=u.full_name_ar or u.full_name,
                     email=u.email,
                     watched_lessons_count=len(watched_ids),
                     missing_lesson_titles=[title for lid, title in lesson_titles.items() if lid not in watched_ids],

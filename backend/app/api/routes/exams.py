@@ -207,7 +207,7 @@ def list_exam_attempts(
             ExamAttemptRow(
                 attempt_id=attempt.id,
                 user_id=user.id,
-                full_name=user.full_name,
+                full_name=user.full_name_ar or user.full_name,
                 email=user.email,
                 score_percent=attempt.score_percent,
                 correct_count=correct_counts.get(attempt.id, 0),
