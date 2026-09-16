@@ -1,50 +1,31 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  type ImageSourcePropType,
-} from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
 import { myDashboard } from '@/lib/api';
-import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
-import { chapterTopicIcon, icons } from '@/lib/icons';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
+import { chapterTopicIcon } from '@/lib/icons';
 import type { DashboardChapter, ExamSpeedFlag, TeacherDashboard, VideoSkipFlag } from '@/lib/types';
 
-// Top-3 ranking badges for the "أداء الطلاب حسب الفصل" leaderboard below —
-// purely decorative identity for a spot in the list, never a pass/fail
-// signal (that's still isWeakest/colors.accent, entirely separate).
-const RANK_MEDALS = ['🥇', '🥈', '🥉'];
-
-// Tick count for the dial-style completion ring in the video-activity card
-// (replaces the old plain progress bar there — see ProgressRing below).
-// Drawn as a ring of small rotated bars rather than an SVG arc, since this
-// app deliberately avoids react-native-svg (see lib/icons.ts's own comment)
-// so every visual change here can ship via `eas update` alone, no native
-// rebuild.
-const RING_TICKS = 28;
+/**
+ * 2026 "Simple & Clean" redesign pass — replaces the earlier version's
+ * per-card borders/shadows, per-item rotating colors, and decorative
+ * chrome (icon-wrap circles, colored badges, a gradient hero banner, a
+ * tick-ring) with one flat, quiet visual language: a single accent color
+ * (colors.primary) used sparingly, generous whitespace instead of boxes,
+ * and thin hairline dividers instead of bordered cards. The teacher asked
+ * for this directly after two more decorative passes still read as
+ * "crowded" and "not modern" — the fix here is less chrome, not more.
+ * Numbers and text carry the hierarchy; backgrounds/borders mostly don't.
+ */
 
 // Same spirit as WEAK_SCORE_THRESHOLD below, but for the video-activity
-// card — mirrors the backend's own VIDEO_COMPLETED_THRESHOLD /
+// stat — mirrors the backend's own VIDEO_COMPLETED_THRESHOLD /
 // VIDEO_LOW_COMPLETION_THRESHOLD (app/api/routes/courses.py) purely for the
-// progress-bar color cutoff below; the actual completed/low-completion
+// progress-line color cutoff below; the actual completed/low-completion
 // COUNTS always come straight from the server, never recomputed here.
 const VIDEO_COMPLETION_GOOD_THRESHOLD = 70;
-
-// Cycles through the app's 4 brand colors in a fixed order — same spirit as
-// admin/index.tsx's old SUBJECT_ACCENTS rotation — so the KPI row and the
-// chapter cards read as distinct facts/items instead of one flat block of
-// cyan. Never used to encode magnitude or status: the exam-performance
-// section below still uses colors.accent alone for "needs attention",
-// completely separate from this identity rotation.
-const BRAND_CYCLE = [colors.primary, colors.violet, colors.accent, colors.success] as const;
 
 // A chapter's average score below this is called out as the one needing
 // review — relative to the rest of this teacher's own chapters, not a
@@ -85,11 +66,7 @@ export default function TeacherDashboardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <LinearGradient
-        colors={gradientBrand}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.header}>
+      <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.greetEyebrow}>أهلاً بيك 👋</Text>
           <Text style={styles.greetName} numberOfLines={1}>
@@ -99,25 +76,24 @@ export default function TeacherDashboardScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
-      </LinearGradient>
+      </View>
 
       {data.chapters_count === 0 ? (
         <Text style={styles.empty}>{STRINGS_EMPTY}</Text>
       ) : (
         <>
-          <SectionLabel color={colors.primary} label="نظرة عامة" />
-          <View style={styles.kpiGrid}>
-            <KpiTile color={colors.primary} icon={icons.layers} label="الفصول" value={String(data.chapters_count)} />
-            <KpiTile color={colors.violet} icon={icons.playCircle} label="المحاضرات" value={String(data.lectures_count)} />
-            <KpiTile
-              color={colors.accent}
-              icon={icons.barChart}
-              label="متوسط درجات الامتحانات"
+          <SectionLabel label="نظرة عامة" />
+          <View style={styles.statRow}>
+            <StatItem label="الفصول" value={String(data.chapters_count)} />
+            <View style={styles.statDivider} />
+            <StatItem label="المحاضرات" value={String(data.lectures_count)} />
+            <View style={styles.statDivider} />
+            <StatItem
+              label="متوسط الدرجات"
               value={data.avg_score_percent != null ? `${Math.round(data.avg_score_percent)}%` : '—'}
             />
-            <KpiTile
-              color={colors.success}
-              icon={icons.shieldCheck}
+            <View style={styles.statDivider} />
+            <StatItem
               label="نسبة النجاح"
               value={data.pass_rate_percent != null ? `${Math.round(data.pass_rate_percent)}%` : '—'}
             />
@@ -125,24 +101,23 @@ export default function TeacherDashboardScreen() {
 
           {perfRows.length > 0 ? (
             <>
-              <SectionLabel color={colors.violet} label="أداء الطلاب حسب الفصل" />
-              <View style={styles.perfCard}>
+              <SectionLabel label="أداء الطلاب حسب الفصل" />
+              <View>
                 {perfRows.map((c, index) => {
                   const isWeakest = c.id === weakestId;
                   const score = Math.round(c.avg_score_percent ?? 0);
                   return (
-                    <View key={c.id} style={[styles.perfRow, index === perfRows.length - 1 && styles.perfRowLast]}>
+                    <View key={c.id} style={[styles.perfRow, index === 0 && styles.perfRowFirst]}>
                       <View style={styles.perfTop}>
-                        <View style={styles.rankBadge}>
-                          <Text style={styles.rankBadgeText}>
-                            {index < RANK_MEDALS.length ? RANK_MEDALS[index] : `#${index + 1}`}
-                          </Text>
-                        </View>
+                        <Text style={styles.perfIndex}>{index + 1}</Text>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.perfName} numberOfLines={1}>
                             {c.title}
                           </Text>
-                          <Text style={styles.perfMeta}>{c.exam_attempt_count} محاولة امتحان</Text>
+                          <Text style={styles.perfMeta}>
+                            {c.exam_attempt_count} محاولة امتحان
+                            {isWeakest ? ' · ⚠ أضعف فصل، يحتاج مراجعة' : ''}
+                          </Text>
                         </View>
                         <Text style={[styles.perfScore, isWeakest && { color: colors.accent }]}>{score}%</Text>
                       </View>
@@ -155,12 +130,6 @@ export default function TeacherDashboardScreen() {
                           ]}
                         />
                       </View>
-                      {isWeakest ? (
-                        <View style={styles.tag}>
-                          <Image source={icons.warningTriangle} style={styles.tagIcon} />
-                          <Text style={styles.tagText}>أضعف فصل — يحتاج مراجعة</Text>
-                        </View>
-                      ) : null}
                     </View>
                   );
                 })}
@@ -170,38 +139,26 @@ export default function TeacherDashboardScreen() {
 
           {(data.exam_speed_flags ?? []).length > 0 ? (
             <>
-              <SectionLabel color={colors.danger} label="امتحانات بسرعة مريبة" />
-              <View style={styles.flagCard}>
-                <Text style={styles.flagHint}>
-                  متوسط الوقت لكل سؤال قليل جداً — مش بالضرورة غش، بس يستاهل نظرة.
-                </Text>
-                {(data.exam_speed_flags ?? []).map((f, index) => (
-                  <ExamSpeedFlagRow key={`${f.user_id}-${f.exam_title}-${index}`} flag={f} />
-                ))}
-              </View>
+              <SectionLabel label="امتحانات بسرعة مريبة" />
+              <Text style={styles.hint}>متوسط الوقت لكل سؤال قليل جداً — مش بالضرورة غش، بس يستاهل نظرة.</Text>
+              {(data.exam_speed_flags ?? []).map((f, index) => (
+                <ExamSpeedFlagRow key={`${f.user_id}-${f.exam_title}-${index}`} flag={f} />
+              ))}
             </>
           ) : null}
 
-          <SectionLabel color={colors.accent} label="الفصول" />
-          <Text style={styles.chapHint}>اضغط على أي فصل عشان تشوف تقرير الطلاب بتاعه</Text>
+          <SectionLabel label="الفصول" />
+          <Text style={styles.hint}>اضغط على أي فصل عشان تشوف تقرير الطلاب بتاعه</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chapScroll}>
-            {data.chapters.map((c, index) => (
-              <ChapterCard
-                key={c.id}
-                chapter={c}
-                color={BRAND_CYCLE[index % BRAND_CYCLE.length]}
-                onPress={() => router.push(`/admin/course/${c.id}/report`)}
-              />
+            {data.chapters.map((c) => (
+              <ChapterCard key={c.id} chapter={c} onPress={() => router.push(`/admin/course/${c.id}/report`)} />
             ))}
           </ScrollView>
 
-          <SectionLabel color={colors.textFaint} label="نشاط المشاهدة" />
+          <SectionLabel label="نشاط المشاهدة" />
           {data.video_activity ? (
-            <View style={styles.watchCard}>
+            <View>
               <View style={styles.watchTop}>
-                <View style={styles.watchIconWrap}>
-                  <Image source={icons.eye} style={styles.watchIcon} />
-                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.watchTitle}>متوسط نسبة المشاهدة</Text>
                   <Text style={styles.watchMeta}>
@@ -209,56 +166,41 @@ export default function TeacherDashboardScreen() {
                     {data.video_activity.total_views} مشاهدة مسجلة
                   </Text>
                 </View>
-                <ProgressRing
-                  percent={data.video_activity.avg_completion_percent}
-                  color={
-                    data.video_activity.avg_completion_percent >= VIDEO_COMPLETION_GOOD_THRESHOLD
-                      ? colors.violet
-                      : colors.accent
-                  }
+                <Text style={styles.watchPercent}>{Math.round(data.video_activity.avg_completion_percent)}%</Text>
+              </View>
+              <View style={styles.track}>
+                <View
+                  style={[
+                    styles.fill,
+                    {
+                      width: `${Math.min(100, Math.max(2, Math.round(data.video_activity.avg_completion_percent)))}%`,
+                      backgroundColor:
+                        data.video_activity.avg_completion_percent >= VIDEO_COMPLETION_GOOD_THRESHOLD
+                          ? colors.primary
+                          : colors.accent,
+                    },
+                  ]}
                 />
               </View>
-              <View style={styles.watchChipsRow}>
-                <View style={styles.watchChip}>
-                  <Image source={icons.shieldCheck} style={[styles.watchChipIcon, { tintColor: colors.success }]} />
-                  <Text style={styles.watchChipText}>
-                    <Text style={styles.watchChipN}>{data.video_activity.completed_views_count}</Text> خلّصوا الفيديو
-                    كامل
-                  </Text>
-                </View>
-                <View style={styles.watchChip}>
-                  <Image source={icons.warningTriangle} style={[styles.watchChipIcon, { tintColor: colors.accent }]} />
-                  <Text style={styles.watchChipText}>
-                    <Text style={styles.watchChipN}>{data.video_activity.low_completion_views_count}</Text> متخطيين
-                    نص الفيديو
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.soonCard}>
-              <View style={styles.soonTop}>
-                <View style={styles.soonIconWrap}>
-                  <Image source={icons.eye} style={styles.soonIcon} />
-                </View>
-                <Text style={styles.soonTitle}>لسه معندناش بيانات مشاهدة</Text>
-              </View>
-              <Text style={styles.soonDesc}>
-                هتظهر هنا تلقائي أول ما الطلاب يبدأوا يتفرجوا على محاضرات الفيديو — هتوريك مين بيفوّت أجزاء ومين خلص
-                الفيديو كامل.
+              <Text style={styles.watchSummary}>
+                <Text style={styles.watchSummaryN}>{data.video_activity.completed_views_count}</Text> خلّصوا الفيديو
+                كامل · <Text style={styles.watchSummaryN}>{data.video_activity.low_completion_views_count}</Text>{' '}
+                متخطيين نص الفيديو
               </Text>
             </View>
+          ) : (
+            <Text style={styles.soonText}>
+              لسه معندناش بيانات مشاهدة — هتظهر هنا تلقائي أول ما الطلاب يبدأوا يتفرجوا على محاضرات الفيديو.
+            </Text>
           )}
 
           {(data.video_skip_flags ?? []).length > 0 ? (
             <>
-              <SectionLabel color={colors.danger} label="طلاب بيتخطوا الفيديو" />
-              <View style={styles.flagCard}>
-                <Text style={styles.flagHint}>لقّطوا/سحبوا الفيديو للأمام أكتر من مرة بدل ما يتفرجوا عليه فعلاً.</Text>
-                {(data.video_skip_flags ?? []).map((f, index) => (
-                  <VideoSkipFlagRow key={`${f.user_id}-${f.lesson_title}-${index}`} flag={f} />
-                ))}
-              </View>
+              <SectionLabel label="طلاب بيتخطوا الفيديو" />
+              <Text style={styles.hint}>لقّطوا/سحبوا الفيديو للأمام أكتر من مرة بدل ما يتفرجوا عليه فعلاً.</Text>
+              {(data.video_skip_flags ?? []).map((f, index) => (
+                <VideoSkipFlagRow key={`${f.user_id}-${f.lesson_title}-${index}`} flag={f} />
+              ))}
             </>
           ) : null}
         </>
@@ -267,154 +209,73 @@ export default function TeacherDashboardScreen() {
   );
 }
 
-// Dial-style completion ring — a ring of small bars rotated around the
-// center, lit up in `color` proportionally to `percent`. Replaces the old
-// horizontal progress bar in the video-activity card. Deliberately built
-// from plain rotated Views (no react-native-svg) so this ships as a JS-only
-// `eas update`, matching every other visual on this screen.
-function ProgressRing({ percent, size = 56, color }: { percent: number; size?: number; color: string }) {
-  const clamped = Math.min(100, Math.max(0, Math.round(percent)));
-  const filled = Math.round((clamped / 100) * RING_TICKS);
-  const tickLength = size * 0.16;
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {Array.from({ length: RING_TICKS }).map((_, i) => (
-        <View
-          key={i}
-          style={{
-            position: 'absolute',
-            width: size,
-            height: size,
-            alignItems: 'center',
-            transform: [{ rotate: `${(360 / RING_TICKS) * i}deg` }],
-          }}>
-          <View
-            style={{
-              width: 2.5,
-              height: tickLength,
-              borderRadius: 2,
-              backgroundColor: i < filled ? color : colors.surfaceAlt,
-            }}
-          />
-        </View>
-      ))}
-      <Text style={styles.ringPercentText}>{clamped}%</Text>
-    </View>
-  );
-}
-
-function SectionLabel({ label, color }: { label: string; color: string }) {
+function SectionLabel({ label }: { label: string }) {
   return (
     <View style={styles.sectionLabelRow}>
-      <View style={[styles.sectionDot, { backgroundColor: color }]} />
       <Text style={styles.sectionLabel}>{label}</Text>
     </View>
   );
 }
 
-function KpiTile({
-  color,
-  icon,
-  label,
-  value,
-}: {
-  color: string;
-  icon: ImageSourcePropType;
-  label: string;
-  value: string;
-}) {
+function StatItem({ label, value }: { label: string; value: string }) {
   return (
-    <View style={[styles.kpi, { borderTopColor: color }]}>
-      <View style={[styles.kpiIconWrap, { backgroundColor: color + '29' }]}>
-        <Image source={icon} style={[styles.kpiIcon, { tintColor: color }]} />
-      </View>
-      <Text style={styles.kpiLabel}>{label}</Text>
-      <Text style={styles.kpiValue}>{value}</Text>
-    </View>
-  );
-}
-
-// Small identity avatar reused on every flag row — same pattern adopted on
-// the per-chapter Student Report screen (app/admin/course/[id]/report.tsx)
-// during the 2026 visual redesign pass, so a flag row reads as "a person"
-// rather than just two lines of text next to a number.
-function FlagAvatar({ name }: { name: string }) {
-  const initial = (name.trim().slice(0, 1) || '?').toUpperCase();
-  return (
-    <View style={styles.flagAvatar}>
-      <Text style={styles.flagAvatarText}>{initial}</Text>
+    <View style={styles.statItem}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 function ExamSpeedFlagRow({ flag }: { flag: ExamSpeedFlag }) {
-  const displayName = flag.full_name?.trim() || flag.email;
   return (
     <View style={styles.flagRow}>
-      <FlagAvatar name={displayName} />
       <View style={{ flex: 1 }}>
         <Text style={styles.flagName} numberOfLines={1}>
-          {displayName}
+          {flag.full_name?.trim() || flag.email}
         </Text>
         <Text style={styles.flagMeta} numberOfLines={1}>
           {flag.exam_title} · {flag.course_title}
         </Text>
       </View>
-      <View style={styles.flagStat}>
-        <Text style={styles.flagStatValue}>{flag.seconds_per_question.toFixed(1)}s</Text>
-        <Text style={styles.flagStatLabel}>لكل سؤال</Text>
-      </View>
+      <Text style={styles.flagStatValue}>
+        {flag.seconds_per_question.toFixed(1)}s <Text style={styles.flagStatLabel}>/ سؤال</Text>
+      </Text>
     </View>
   );
 }
 
 function VideoSkipFlagRow({ flag }: { flag: VideoSkipFlag }) {
-  const displayName = flag.full_name?.trim() || flag.email;
   return (
     <View style={styles.flagRow}>
-      <FlagAvatar name={displayName} />
       <View style={{ flex: 1 }}>
         <Text style={styles.flagName} numberOfLines={1}>
-          {displayName}
+          {flag.full_name?.trim() || flag.email}
         </Text>
         <Text style={styles.flagMeta} numberOfLines={1}>
           {flag.lesson_title} · {flag.course_title}
         </Text>
       </View>
-      <View style={styles.flagStat}>
-        <Text style={styles.flagStatValue}>{flag.skip_count}×</Text>
-        <Text style={styles.flagStatLabel}>{flag.skipped_seconds} ث اتخطت</Text>
-      </View>
+      <Text style={styles.flagStatValue}>
+        {flag.skip_count}× <Text style={styles.flagStatLabel}>({flag.skipped_seconds} ث)</Text>
+      </Text>
     </View>
   );
 }
 
-function ChapterCard({
-  chapter,
-  color,
-  onPress,
-}: {
-  chapter: DashboardChapter;
-  color: string;
-  onPress: () => void;
-}) {
+function ChapterCard({ chapter, onPress }: { chapter: DashboardChapter; onPress: () => void }) {
   return (
     <Pressable style={({ pressed }) => [styles.chapCard, pressed && styles.chapCardPressed]} onPress={onPress}>
-      <View style={[styles.chapCover, { backgroundColor: color + '1f' }]}>
-        <Image source={chapterTopicIcon(chapter.title)} style={[styles.chapIcon, { tintColor: color }]} />
+      <View style={styles.chapCover}>
+        <Image source={chapterTopicIcon(chapter.title)} style={styles.chapIcon} />
       </View>
-      <View style={styles.chapBody}>
-        <Text style={styles.chapTitle} numberOfLines={2}>
-          {chapter.title}
+      <Text style={styles.chapTitle} numberOfLines={2}>
+        {chapter.title}
+      </Text>
+      <View style={styles.chapMeta}>
+        <Text style={styles.chapMetaText}>{chapter.lecture_count} محاضرات</Text>
+        <Text style={styles.chapMetaText}>
+          {chapter.avg_score_percent != null ? `${Math.round(chapter.avg_score_percent)}%` : '—'}
         </Text>
-        <View style={styles.chapMeta}>
-          <Text style={styles.chapMetaText}>
-            <Text style={styles.chapMetaN}>{chapter.lecture_count}</Text> محاضرات
-          </Text>
-          <Text style={styles.chapMetaText}>
-            {chapter.avg_score_percent != null ? `${Math.round(chapter.avg_score_percent)}%` : 'لسه من غير امتحانات'}
-          </Text>
-        </View>
       </View>
     </Pressable>
   );
@@ -424,212 +285,82 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingBottom: 40 },
   centered: { alignItems: 'center', justifyContent: 'center' },
-  // Gradient hero banner — same cyan->violet brand gradient used on the tab
-  // bar's active pill, the login mark, and the profile screen's avatar/CTA
-  // (see constants/theme.ts's gradientBrand comment), so the very first
-  // thing a teacher sees on this screen ties back to the app's identity
-  // instead of a flat card.
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    marginBottom: spacing.lg,
-    ...cardShadow,
-  },
-  greetEyebrow: { fontSize: 12, color: colors.onPrimary, opacity: 0.75, fontFamily: fonts.medium, marginBottom: 3 },
-  greetName: { fontSize: 19, color: colors.onPrimary, fontFamily: fonts.bold },
+
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xl },
+  greetEyebrow: { fontSize: 12, color: colors.textFaint, fontFamily: fonts.medium, marginBottom: 3 },
+  greetName: { fontSize: 20, color: colors.text, fontFamily: fonts.bold },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.onPrimary + '20',
-    borderWidth: 1,
-    borderColor: colors.onPrimary + '40',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginStart: spacing.md,
   },
-  avatarText: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 16 },
+  avatarText: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 15 },
 
-  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 22, marginBottom: 10 },
-  sectionDot: { width: 6, height: 6, borderRadius: 2 },
-  sectionLabel: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.semiBold, letterSpacing: 0.5 },
+  // Single quiet section header — no colored dot, no card wrapper. A
+  // little top margin gives each section room without boxing it in.
+  sectionLabelRow: { marginTop: 26, marginBottom: 12 },
+  sectionLabel: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.semiBold, letterSpacing: 0.6 },
+  hint: { fontSize: 11.5, color: colors.textFaint, lineHeight: 16, marginBottom: 10, textAlign: 'right' },
 
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  kpi: {
-    width: '48%',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderTopWidth: 2.5,
-    borderRadius: radius.lg,
-    padding: 14,
-    ...cardShadow,
-  },
-  kpiIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 9,
-  },
-  kpiIcon: { width: 14, height: 14 },
-  kpiLabel: { fontSize: 11.5, color: colors.textMuted, fontFamily: fonts.medium, marginBottom: 6 },
-  kpiValue: { fontSize: 24, color: colors.text, fontFamily: fonts.bold },
+  // KPI strip — one flat row, thin dividers between columns, no per-tile
+  // card/border/icon. The numbers themselves carry all the weight.
+  statRow: { flexDirection: 'row', alignItems: 'stretch' },
+  statItem: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, backgroundColor: colors.border, marginVertical: 2 },
+  statValue: { fontSize: 21, color: colors.text, fontFamily: fonts.bold, marginBottom: 4 },
+  statLabel: { fontSize: 10.5, color: colors.textFaint, fontFamily: fonts.medium, textAlign: 'center' },
 
-  perfCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 16,
-    paddingBottom: 8,
-    ...cardShadow,
-  },
-  perfRow: { marginBottom: 14 },
-  perfRowLast: { marginBottom: 6 },
-  perfTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  rankBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankBadgeText: { fontSize: 11, color: colors.textMuted, fontFamily: fonts.bold },
-  perfName: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold },
-  perfMeta: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+  perfRow: { paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  perfRowFirst: { borderTopWidth: 0, paddingTop: 0 },
+  perfTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  perfIndex: { width: 16, fontSize: 12, color: colors.textFaint, fontFamily: fonts.semiBold, textAlign: 'center' },
+  perfName: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
+  perfMeta: { fontSize: 11, color: colors.textFaint, marginTop: 1, textAlign: 'right' },
   perfScore: { fontSize: 14, color: colors.text, fontFamily: fonts.bold },
-  track: { height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  track: { height: 4, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.primary },
   fillWarn: { backgroundColor: colors.accent },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accent + '26',
-    borderRadius: radius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-    marginTop: 7,
-  },
-  tagIcon: { width: 11, height: 11, tintColor: colors.accent },
-  tagText: { fontSize: 10.5, color: colors.accent, fontFamily: fonts.bold },
 
-  chapHint: { fontSize: 10.5, color: colors.textFaint, marginBottom: 8, textAlign: 'right' },
   chapScroll: { marginHorizontal: -2 },
-  chapCard: {
-    width: 150,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    marginEnd: 10,
-    ...cardShadow,
-  },
-  chapCardPressed: { opacity: 0.85 },
-  chapCover: { height: 78, alignItems: 'center', justifyContent: 'center' },
-  chapIcon: { width: 28, height: 28 },
-  chapBody: { padding: 11 },
-  chapTitle: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 6, lineHeight: 17 },
-  chapMeta: { flexDirection: 'row', justifyContent: 'space-between' },
-  chapMetaText: { fontSize: 10.5, color: colors.textMuted },
-  chapMetaN: { color: colors.text, fontFamily: fonts.bold },
-
-  soonCard: {
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.violet + '52',
-    borderRadius: radius.lg,
-    padding: 16,
-    backgroundColor: colors.violet + '0a',
-  },
-  soonTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  soonIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  soonIcon: { width: 17, height: 17, tintColor: colors.textMuted },
-  soonTitle: { flex: 1, fontSize: 13.5, color: colors.text, fontFamily: fonts.bold },
-  soonDesc: { fontSize: 12, color: colors.textMuted, lineHeight: 19 },
-
-  watchCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 16,
-    ...cardShadow,
-  },
-  watchTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  watchIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: colors.violet + '1f',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchIcon: { width: 17, height: 17, tintColor: colors.violet },
-  watchTitle: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 2 },
-  watchMeta: { fontSize: 10.5, color: colors.textFaint },
-  ringPercentText: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold },
-  watchChipsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  watchChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surfaceAlt,
+  chapCard: { width: 136, marginEnd: 16 },
+  chapCardPressed: { opacity: 0.6 },
+  chapCover: {
+    height: 72,
     borderRadius: radius.md,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
-  watchChipIcon: { width: 13, height: 13 },
-  watchChipText: { flex: 1, fontSize: 10.5, color: colors.textMuted, lineHeight: 14 },
-  watchChipN: { color: colors.text, fontFamily: fonts.bold },
+  chapIcon: { width: 24, height: 24, tintColor: colors.textMuted },
+  chapTitle: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 4, lineHeight: 17 },
+  chapMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  chapMetaText: { fontSize: 10.5, color: colors.textFaint },
+
+  watchTop: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8 },
+  watchTitle: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 3 },
+  watchMeta: { fontSize: 10.5, color: colors.textFaint },
+  watchPercent: { fontSize: 22, color: colors.text, fontFamily: fonts.bold, marginStart: 10 },
+  watchSummary: { fontSize: 11.5, color: colors.textFaint, marginTop: 10, textAlign: 'right', lineHeight: 17 },
+  watchSummaryN: { color: colors.text, fontFamily: fonts.bold },
 
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
+  soonText: { fontSize: 12, color: colors.textFaint, lineHeight: 19, textAlign: 'right' },
 
-  flagCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.danger + '33',
-    borderRadius: radius.lg,
-    padding: 14,
-    ...cardShadow,
-  },
-  flagHint: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: 10, textAlign: 'right' },
   flagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  flagAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.danger + '1f',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  flagAvatarText: { fontSize: 12, color: colors.danger, fontFamily: fonts.bold },
   flagName: { fontSize: 13, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
   flagMeta: { fontSize: 11, color: colors.textFaint, marginTop: 2, textAlign: 'right' },
-  flagStat: { alignItems: 'flex-end' },
-  flagStatValue: { fontSize: 14, color: colors.danger, fontFamily: fonts.bold },
-  flagStatLabel: { fontSize: 10, color: colors.textFaint, marginTop: 1 },
+  flagStatValue: { fontSize: 13, color: colors.accent, fontFamily: fonts.bold },
+  flagStatLabel: { fontSize: 10.5, color: colors.textFaint, fontFamily: fonts.medium },
 });
