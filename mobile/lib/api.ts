@@ -431,6 +431,17 @@ export function getGradesMatrix() {
   return request<GradesMatrixData>('/api/v1/courses/mine/grades-matrix');
 }
 
+/** Step 1 of the "download as Excel" flow — mints a short-lived (5 minute),
+ * single-purpose token while we still have a normal Authorization header to
+ * call this with. The caller then opens
+ * `${getApiBaseUrl()}/api/v1/courses/mine/grades-matrix/export?token=...`
+ * in the system browser (Linking.openURL) — a browser download can't attach
+ * an Authorization header itself, which is why this can't just be the same
+ * request()-based call as everything else in this file. */
+export function getGradesMatrixExportLink() {
+  return request<{ token: string }>('/api/v1/courses/mine/grades-matrix/export-link');
+}
+
 /** One chapter's student-activity report — every student who has opened a
  * lecture or attempted an exam in this chapter, with exactly which
  * lectures/exams they still haven't touched. Backs the Teacher Dashboard's

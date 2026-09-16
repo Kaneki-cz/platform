@@ -1,9 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
-import { getGradesMatrix, myDashboard } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/config';
+import { getGradesMatrix, getGradesMatrixExportLink, myDashboard } from '@/lib/api';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon } from '@/lib/icons';
 import type {
@@ -47,6 +48,29 @@ export default function TeacherDashboardScreen() {
   const router = useRouter();
   const [data, setData] = useState<TeacherDashboard | null>(null);
   const [gradesMatrix, setGradesMatrix] = useState<GradesMatrixData | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  // "تحميل كملف Excel" — mints a short-lived export token (see
+  // getGradesMatrixExportLink) while we still have a normal auth header,
+  // then hands the actual .xlsx download to the system browser, since a
+  // browser download can't carry our Authorization header itself. The token
+  // is single-purpose and expires in 5 minutes (see create_export_token on
+  // the backend) — plenty of time for the browser to pick it up, too short
+  // to matter if it ends up sitting in browser history.
+  const handleExportExcel = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { token } = await getGradesMatrixExportLink();
+      const url = `${getApiBaseUrl()}/api/v1/courses/mine/grades-matrix/export?token=${encodeURIComponent(token)}`;
+      await Linking.openURL(url);
+    } catch {
+      // best-effort — the button itself has no inline error UI yet; a
+      // failed mint/openURL just means nothing happens on tap.
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting]);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,10 +191,25 @@ export default function TeacherDashboardScreen() {
 
           {gradesByChapter.length > 0 ? (
             <>
-              <SectionLabel label="درجات الطلاب في الامتحانات" />
-              <Text style={styles.hint}>
-                درجة كل طالب في كل امتحان، ومتوسطه على آخر 30 يوم ومتوسطه في الفصل ده كامل.
-              </Text>
+              <View style={styles.gradesHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <SectionLabel label="درجات الطلاب في الامتحانات" />
+                  <Text style={styles.hint}>
+                    درجة كل طالب في كل امتحان، ومتوسطه على آخر 30 يوم ومتوسطه في الفصل ده كامل.
+                  </Text>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.exportButton, pressed && styles.exportButtonPressed]}
+                  onPress={handleExportExcel}
+                  disabled={exporting}
+                >
+                  {exporting ? (
+                    <ActivityIndicator size="small" color={colors.onPrimary} />
+                  ) : (
+                    <Text style={styles.exportButtonText}>تحميل Excel</Text>
+                  )}
+                </Pressable>
+              </View>
               {gradesByChapter.map((group) => (
                 <GradesTable key={group.courseId} courseTitle={group.courseTitle} rows={group.rows} />
               ))}
@@ -320,8 +359,14 @@ function GradesTable({ courseTitle, rows }: { courseTitle: string; rows: Student
           <View style={styles.gradesRow}>
             <Text style={[styles.gradesHeaderCell, gradesCols.name]}>الطالب</Text>
             <Text style={[styles.gradesHeaderCell, gradesCols.code]}>الكود</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.chapter]}>الفصل</Text>
             <Text style={[styles.gradesHeaderCell, gradesCols.exam]}>الامتحان</Text>
             <Text style={[styles.gradesHeaderCell, gradesCols.score]}>الدرجة</Text>
+            {/* "متوسط الشهر"/"متوسط الفصل" repeat the "الفصل" column's value in
+                every row (not just once per group) — the user flagged that
+                relying on the table's own per-chapter grouping to know which
+                chapter an average was scoped to was ambiguous, so each row now
+                spells it out on its own, both here and in the Excel export. */}
             <Text style={[styles.gradesHeaderCell, gradesCols.avg]}>متوسط الشهر</Text>
             <Text style={[styles.gradesHeaderCell, gradesCols.avg]}>متوسط الفصل</Text>
           </View>
@@ -331,10 +376,20 @@ function GradesTable({ courseTitle, rows }: { courseTitle: string; rows: Student
                 {r.full_name?.trim() || r.email}
               </Text>
               <Text style={[styles.gradesCell, gradesCols.code]}>{r.student_code ?? '—'}</Text>
+              <Text style={[styles.gradesCell, gradesCols.chapter]} numberOfLines={1}>
+                {r.course_title}
+              </Text>
               <Text style={[styles.gradesCell, gradesCols.exam]} numberOfLines={1}>
                 {r.exam_title}
               </Text>
-              <Text style={[styles.gradesCell, gradesCols.score, styles.gradesCellBold]}>
+              <Text
+                style={[
+                  styles.gradesCell,
+                  gradesCols.score,
+                  styles.gradesCellBold,
+                  r.passed ? styles.gradesScorePassed : styles.gradesScoreFailed,
+                ]}
+              >
                 {r.correct_count}/{r.question_count || '—'}
               </Text>
               <Text style={[styles.gradesCell, gradesCols.avg]}>
@@ -354,6 +409,7 @@ function GradesTable({ courseTitle, rows }: { courseTitle: string; rows: Student
 const gradesCols = StyleSheet.create({
   name: { width: 120 },
   code: { width: 56 },
+  chapter: { width: 130 },
   exam: { width: 140 },
   score: { width: 60 },
   avg: { width: 76 },
@@ -448,6 +504,20 @@ const styles = StyleSheet.create({
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
   soonText: { fontSize: 12, color: colors.textFaint, lineHeight: 19, textAlign: 'right' },
 
+  gradesHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  exportButton: {
+    marginTop: 26,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportButtonPressed: { opacity: 0.75 },
+  exportButtonText: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 12.5 },
+
   gradesTableBlock: { marginBottom: 18 },
   gradesTableTitle: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 8, textAlign: 'right' },
   gradesRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -469,6 +539,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   gradesCellBold: { color: colors.text, fontFamily: fonts.bold },
+  gradesScorePassed: { color: colors.success },
+  gradesScoreFailed: { color: colors.danger },
 
   flagRow: {
     flexDirection: 'row',

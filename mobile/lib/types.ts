@@ -215,6 +215,9 @@ export interface StudentExamGradeRow {
   correct_count: number;
   question_count: number;
   score_percent: number | null;
+  // Reuses ExamAttempt.passed — lets the table/export color this row
+  // without recomputing anything against passing_percent client-side.
+  passed: boolean;
   submitted_at: string;
   // This student's average across their last-30-days completed attempts,
   // across every chapter this teacher manages (not just this row's exam).
