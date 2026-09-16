@@ -148,6 +148,22 @@ export default function AdminHomeScreen() {
             <Text style={styles.actionButtonText}>New Chapter</Text>
           </Scalable>
 
+          {/* Self-service groups + attendance scanning for the instructor's
+              OWN account — mirrors the admin-only "Student groups" box
+              inside admin/subject/[id].tsx, but reachable without an admin
+              opening the instructor's teacher card for them. See
+              app/admin/groups.tsx and GET /api/v1/teachers/mine. */}
+          <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/groups')}>
+            <View style={styles.utilityIconWrap}>
+              <Text style={styles.utilityIcon}>👥</Text>
+            </View>
+            <View style={styles.utilityTextWrap}>
+              <Text style={styles.utilityTitle}>My Groups</Text>
+              <Text style={styles.utilitySubtitle}>Create groups & scan student attendance</Text>
+            </View>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Scalable>
+
           <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/dashboard')}>
             <View style={styles.utilityIconWrap}>
               <Image source={icons.barChart} style={{ width: 20, height: 20, tintColor: colors.accent }} />

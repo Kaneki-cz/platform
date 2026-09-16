@@ -4,7 +4,6 @@ import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from './config';
 import type {
   AskResponse,
-  AttendanceScanResult,
   ChatMessage,
   Course,
   CourseCreateInput,
@@ -13,16 +12,13 @@ import type {
   CourseUpdateInput,
   EnrollmentStatus,
   EnrollmentSubmit,
-  GroupAttendanceData,
   ExamAdmin,
   ExamAnswerSubmit,
-  ExamAttemptsData,
   ExamCreateInput,
   ExamStartResult,
   ExamStatus,
   ExamSubmitResult,
   ExamUpdateInput,
-  GradesMatrixData,
   LessonAccessCode,
   LessonCreateInput,
   LessonDetail,
@@ -36,7 +32,6 @@ import type {
   QuestionAttemptResult,
   QuestionCreateInput,
   QuestionUpdateInput,
-  StudentCode,
   Subject,
   SubjectDetail,
   Teacher,
@@ -428,23 +423,6 @@ export function myDashboard() {
   return request<TeacherDashboard>('/api/v1/courses/mine/dashboard');
 }
 
-/** Cross-chapter per-student-per-exam grades table for the Teacher
- * Dashboard's grades-matrix section — see GradesMatrixData/StudentExamGradeRow. */
-export function getGradesMatrix() {
-  return request<GradesMatrixData>('/api/v1/courses/mine/grades-matrix');
-}
-
-/** Step 1 of the "download as Excel" flow — mints a short-lived (5 minute),
- * single-purpose token while we still have a normal Authorization header to
- * call this with. The caller then opens
- * `${getApiBaseUrl()}/api/v1/courses/mine/grades-matrix/export?token=...`
- * in the system browser (Linking.openURL) — a browser download can't attach
- * an Authorization header itself, which is why this can't just be the same
- * request()-based call as everything else in this file. */
-export function getGradesMatrixExportLink() {
-  return request<{ token: string }>('/api/v1/courses/mine/grades-matrix/export-link');
-}
-
 /** One chapter's student-activity report — every student who has opened a
  * lecture or attempted an exam in this chapter, with exactly which
  * lectures/exams they still haven't touched. Backs the Teacher Dashboard's
@@ -483,6 +461,16 @@ export function deleteCourse(courseId: string) {
 // --- Teachers (display cards, not real accounts — see lib/types.ts's Teacher) --
 export function listTeachers(subjectId: string) {
   return request<Teacher[]>(`/api/v1/subjects/${subjectId}/teachers`);
+}
+
+/** The signed-in instructor's OWN teacher card (looked up server-side by
+ * their linked account), used by app/admin/groups.tsx to reach their own
+ * teacher_id for the groups + attendance endpoints — works even when they
+ * have no chapters assigned yet, unlike deriving it from myManagedCourses.
+ * Rejects with a 404 ApiError if their account isn't linked to any teacher
+ * card yet. */
+export function myTeacherProfile() {
+  return request<Teacher>('/api/v1/teachers/mine');
 }
 
 export function createTeacher(input: TeacherCreateInput) {
@@ -555,19 +543,6 @@ export function updateProgress(lessonId: string, completionPercent: number) {
   return request<ProgressEntry>('/api/v1/progress', {
     method: 'PUT',
     body: JSON.stringify({ lesson_id: lessonId, completion_percent: completionPercent }),
-  });
-}
-
-/** Reported by the video player (see components/LessonVideoPlayer.tsx)
- * whenever it detects a forward jump in playback bigger than normal
- * watching could produce — e.g. dragging the scrubber ahead. Purely
- * additive on the server (bumps a counter), never blocks or slows down
- * playback, and errors here are swallowed by the caller the same way
- * updateProgress's are. */
-export function reportVideoSkip(lessonId: string, skippedSeconds: number) {
-  return request<ProgressEntry>('/api/v1/progress/skip', {
-    method: 'POST',
-    body: JSON.stringify({ lesson_id: lessonId, skipped_seconds: skippedSeconds }),
   });
 }
 
@@ -749,13 +724,6 @@ export function deleteExam(examId: string) {
   return request<void>(`/api/v1/exams/${examId}`, { method: 'DELETE' });
 }
 
-/** Instructor/admin "grades" view — every completed attempt on this exam,
- * newest first, with is_fast flagging a suspiciously quick one (see
- * app/admin/exam/[id]/attempts.tsx). */
-export function getExamAttempts(examId: string) {
-  return request<ExamAttemptsData>(`/api/v1/exams/${examId}/attempts`);
-}
-
 /** Instructor/admin — same shape as getLessonQuestionsAdmin but for an
  * exam's questions. */
 export function getExamQuestionsAdmin(examId: string) {
@@ -885,43 +853,5 @@ export function adminUpdateUserEnrollment(
       method: 'PUT',
       body: JSON.stringify({ group_id: groupId }),
     },
-  );
-}
-
-// ── Attendance (per-student QR code + group scanning) ────────────────────────
-// See lib/types.ts's StudentCode/AttendanceScanResult/GroupAttendanceData for
-// the full picture and backend/app/api/routes/attendance.py.
-
-/** Student. This student's own permanent attendance code, generating and
- * persisting one server-side the first time this is ever called for their
- * account — see app/(tabs)/profile.tsx, which renders it as a QR. */
-export function getMyStudentCode(): Promise<StudentCode> {
-  return request<StudentCode>('/api/v1/students/me/code');
-}
-
-/** Instructor/admin. Marks the student owning `code` present in `groupId`
- * for today — see app/admin/attendance/[groupId].tsx. Re-scanning the same
- * student in the same group/day is a harmless no-op
- * (already_marked: true on the result), never an error. Throws a 400
- * ApiError if the code doesn't belong to a student assigned to this group,
- * or a 404 if the code isn't valid at all. */
-export function scanAttendance(code: string, groupId: string): Promise<AttendanceScanResult> {
-  return request<AttendanceScanResult>('/api/v1/attendance/scan', {
-    method: 'POST',
-    body: JSON.stringify({ code, group_id: groupId }),
-  });
-}
-
-/** Instructor/admin. Who's been scanned present in this group on a given day
- * (today by default, pass an explicit `YYYY-MM-DD` for another day) — the
- * scanner screen's live present-list. */
-export function getGroupAttendance(
-  teacherId: string,
-  groupId: string,
-  sessionDate?: string,
-): Promise<GroupAttendanceData> {
-  const params = sessionDate ? `?session_date=${sessionDate}` : '';
-  return request<GroupAttendanceData>(
-    `/api/v1/teachers/${teacherId}/groups/${groupId}/attendance${params}`,
   );
 }
