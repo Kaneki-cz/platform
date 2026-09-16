@@ -138,6 +138,41 @@ export interface StudentReportRow {
   missing_lesson_titles: string[];
   attempted_exams_count: number;
   missing_exam_titles: string[];
+  // Summed across every lecture of THIS chapter only (unlike the
+  // dashboard's video_skip_flags below, which is cross-chapter) — 0 for a
+  // student with no detected skips in this chapter.
+  skip_count: number;
+  skipped_seconds: number;
+}
+
+// One (student, lecture) pair worth a teacher's attention on the Teacher
+// Dashboard — this student's skip_count/skipped_seconds on this lecture
+// crossed the backend's flagging bar. A nudge list, not a full audit log —
+// see backend/app/api/routes/courses.py's my_dashboard.
+export interface VideoSkipFlag {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  lesson_title: string;
+  course_title: string;
+  skip_count: number;
+  skipped_seconds: number;
+}
+
+// One suspiciously fast completed exam attempt worth a teacher's attention
+// on the Teacher Dashboard — rolled up across every chapter they manage
+// (see ExamAttemptRow.is_fast for the same rule applied one exam at a
+// time). A nudge list, not a full audit log.
+export interface ExamSpeedFlag {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  exam_title: string;
+  course_title: string;
+  score_percent: number | null;
+  duration_seconds: number;
+  question_count: number;
+  seconds_per_question: number;
 }
 
 export interface CourseStudentReport {
@@ -160,6 +195,74 @@ export interface TeacherDashboard {
   pass_rate_percent: number | null;
   chapters: DashboardChapter[];
   video_activity: VideoActivity | null;
+  // Both empty (never null) when nothing has crossed the flagging bar yet.
+  video_skip_flags: VideoSkipFlag[];
+  exam_speed_flags: ExamSpeedFlag[];
+}
+
+// One row in the Teacher Dashboard's cross-chapter grades matrix (GET
+// /api/v1/courses/mine/grades-matrix) — one student's one completed exam
+// attempt, alongside that same student's own rolling averages for context.
+// student_code is always null for now — see backend's own comment on this
+// same field for why (a placeholder ahead of the per-student QR feature,
+// which now exists — see StudentCode above — but this column hasn't been
+// wired up to it yet).
+export interface StudentExamGradeRow {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  student_code: string | null;
+  course_id: string;
+  course_title: string;
+  // The chapter's OWN assigned grade level (Course.grade_level) — null for
+  // a chapter that was never filed under one. Deliberately NOT the
+  // student's own enrolled grade.
+  course_grade_level: string | null;
+  exam_id: string;
+  exam_title: string;
+  correct_count: number;
+  question_count: number;
+  score_percent: number | null;
+  passed: boolean;
+  submitted_at: string;
+  // This student's average score across their completed attempts in the
+  // last 30 days, across every exam in every chapter this teacher manages.
+  month_avg_score_percent: number | null;
+  // This student's average score across ALL of their completed attempts
+  // within this row's own chapter — all-time, not time-boxed.
+  chapter_avg_score_percent: number | null;
+}
+
+export interface GradesMatrixData {
+  rows: StudentExamGradeRow[];
+}
+
+// One student's one completed sitting of an exam — the teacher-facing
+// "grades" view (GET /api/v1/exams/{examId}/attempts). is_fast flags an
+// attempt whose average time-per-question fell suspiciously low — a nudge
+// for the teacher to take a closer look, never something that blocks or
+// penalizes the student.
+export interface ExamAttemptRow {
+  attempt_id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  score_percent: number | null;
+  // Raw "X out of Y correct" — pair with the parent ExamAttemptsData's
+  // question_count for the denominator.
+  correct_count: number;
+  passed: boolean;
+  duration_seconds: number | null;
+  started_at: string;
+  submitted_at: string | null;
+  is_fast: boolean;
+}
+
+export interface ExamAttemptsData {
+  exam_id: string;
+  exam_title: string;
+  question_count: number;
+  attempts: ExamAttemptRow[];
 }
 
 export interface Lesson {

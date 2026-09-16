@@ -13,14 +13,17 @@ import type {
   CourseUpdateInput,
   EnrollmentStatus,
   EnrollmentSubmit,
-  GroupAttendance,
   ExamAdmin,
   ExamAnswerSubmit,
+  ExamAttemptRow,
+  ExamAttemptsData,
   ExamCreateInput,
   ExamStartResult,
   ExamStatus,
   ExamSubmitResult,
   ExamUpdateInput,
+  GradesMatrixData,
+  GroupAttendance,
   LessonAccessCode,
   LessonCreateInput,
   LessonDetail,
@@ -35,6 +38,7 @@ import type {
   QuestionCreateInput,
   QuestionUpdateInput,
   StudentCode,
+  StudentExamGradeRow,
   Subject,
   SubjectDetail,
   Teacher,
@@ -426,6 +430,23 @@ export function myDashboard() {
   return request<TeacherDashboard>('/api/v1/courses/mine/dashboard');
 }
 
+/** Cross-chapter grades matrix backing the Teacher Dashboard's "درجات
+ * الطلاب في الامتحانات" table — same chapter scoping as myDashboard. */
+export function getGradesMatrix() {
+  return request<GradesMatrixData>('/api/v1/courses/mine/grades-matrix');
+}
+
+/** Step 1 of the Dashboard's "تحميل كملف Excel" flow: mints a short-lived,
+ * single-purpose token while we still have a normal auth header. The
+ * screen then builds a plain https:// link with this token as a query
+ * param and opens it via Linking.openURL — see
+ * GET /api/v1/courses/mine/grades-matrix/export, which is what actually
+ * accepts the token (a browser download can't attach our Authorization
+ * header itself). */
+export function getGradesMatrixExportLink() {
+  return request<{ token: string }>('/api/v1/courses/mine/grades-matrix/export-link');
+}
+
 /** One chapter's student-activity report — every student who has opened a
  * lecture or attempted an exam in this chapter, with exactly which
  * lectures/exams they still haven't touched. Backs the Teacher Dashboard's
@@ -546,6 +567,19 @@ export function updateProgress(lessonId: string, completionPercent: number) {
   return request<ProgressEntry>('/api/v1/progress', {
     method: 'PUT',
     body: JSON.stringify({ lesson_id: lessonId, completion_percent: completionPercent }),
+  });
+}
+
+/** Called by the video player whenever it detects a forward jump in
+ * playback bigger than normal watching could produce (see
+ * components/LessonVideoPlayer.tsx's onSkip) — bumps this student's
+ * skip_count/skipped_seconds on this lesson so the Teacher Dashboard can
+ * flag it (see TeacherDashboard's video_skip_flags). Purely informational;
+ * never blocks or slows down playback. */
+export function reportVideoSkip(lessonId: string, skippedSeconds: number) {
+  return request<ProgressEntry>('/api/v1/progress/skip', {
+    method: 'POST',
+    body: JSON.stringify({ lesson_id: lessonId, skipped_seconds: skippedSeconds }),
   });
 }
 
@@ -700,6 +734,13 @@ export function redeemLessonCode(code: string) {
  * order_index. */
 export function listCourseExams(courseId: string) {
   return request<ExamAdmin[]>(`/api/v1/exams/course/${courseId}`);
+}
+
+/** Instructor/admin. Every completed sitting of one exam — the
+ * teacher-facing "grades" view (app/admin/exam/[id]/attempts.tsx and the
+ * per-chapter student report at app/admin/course/[id]/report.tsx). */
+export function getExamAttempts(examId: string) {
+  return request<ExamAttemptsData>(`/api/v1/exams/${examId}/attempts`);
 }
 
 /** Instructor/admin. Single-exam fetch by id — for the exam-questions
