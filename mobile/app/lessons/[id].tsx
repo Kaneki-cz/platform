@@ -122,7 +122,7 @@ export default function LessonScreen() {
   useEffect(() => {
     if (!lesson?.video_url) return undefined;
     let cancelled = false;
-    resolveVideoUrl(lesson.video_url)
+    resolveVideoUrl(lesson.video_url, id)
       .then((url) => {
         if (!cancelled) setResolvedVideoUrl(url);
       })

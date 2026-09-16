@@ -78,10 +78,10 @@ const B2_URL_SCHEME = 'b2:';
  *    uploaded — the dev machine's LAN IP can change (new wifi, router
  *    reboot, etc.).
  */
-export async function resolveVideoUrl(videoUrl: string): Promise<string> {
+export async function resolveVideoUrl(videoUrl: string, lessonId?: string): Promise<string> {
   if (/^https?:\/\//i.test(videoUrl)) return videoUrl;
   if (videoUrl.startsWith(B2_URL_SCHEME)) {
-    return getSignedVideoUrl(videoUrl.slice(B2_URL_SCHEME.length));
+    return getSignedVideoUrl(videoUrl.slice(B2_URL_SCHEME.length), lessonId);
   }
   return `${getApiBaseUrl()}${videoUrl}`;
 }
@@ -94,9 +94,14 @@ export async function resolveVideoUrl(videoUrl: string): Promise<string> {
 export const resolveFileUrl = resolveVideoUrl;
 
 /** Exchanges a private B2 object key for a short-lived signed playback URL.
- * See backend/app/api/routes/uploads.py's get_video_signed_url. */
-async function getSignedVideoUrl(key: string): Promise<string> {
-  const { url } = await request<{ url: string }>(`/api/v1/uploads/video-url?key=${encodeURIComponent(key)}`);
+ * See backend/app/api/routes/uploads.py's get_video_signed_url.
+ * lessonId is required for student callers — the backend re-checks the exam
+ * gate and code gate on every signed-URL request, not just when the lesson
+ * screen first loads, so a student can't bypass a gate by saving an old key. */
+async function getSignedVideoUrl(key: string, lessonId?: string): Promise<string> {
+  const params = new URLSearchParams({ key });
+  if (lessonId) params.set('lesson_id', lessonId);
+  const { url } = await request<{ url: string }>(`/api/v1/uploads/video-url?${params}`);
   return url;
 }
 
