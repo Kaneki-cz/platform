@@ -27,3 +27,7 @@ boto3==1.35.36
 google-auth==2.58.0
 google-auth-oauthlib==1.4.1
 google-api-python-client==2.200.0
+# IP-based rate limiting for the auth endpoints (login, register,
+# resend-verification) — prevents brute-force password guessing and
+# signup spam. See app/core/limiter.py and app/main.py.
+slowapi==0.1.9

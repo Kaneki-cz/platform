@@ -3,11 +3,19 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import api_router
 from app.core.config import settings
+from app.core.limiter import limiter
 
 app = FastAPI(title=settings.APP_NAME)
+
+# Wire up the rate-limiter so @limiter.limit() decorators in route modules
+# can enforce their caps and return 429s with a clear JSON error.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # In production, restrict this to the mobile app's actual origin(s)/scheme.
 app.add_middleware(
