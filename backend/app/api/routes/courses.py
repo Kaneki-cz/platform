@@ -1,5 +1,6 @@
 import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func
@@ -25,7 +26,9 @@ from app.schemas.course import (
     DashboardChapterOut,
     ExamSpeedFlagOut,
     ExamSummaryOut,
+    GradesMatrixOut,
     ManagedCourseOut,
+    StudentExamGradeRow,
     StudentReportRow,
     TeacherDashboardOut,
     VideoActivityOut,
@@ -67,6 +70,12 @@ FAST_ATTEMPT_SECONDS_PER_QUESTION = 8
 # Both flag lists are capped to this many rows — a nudge list, not a full
 # audit log; the per-chapter student report is where the full picture lives.
 MAX_DASHBOARD_FLAGS = 15
+
+# "This month" for the grades-matrix's month_avg_score_percent (see
+# my_grades_matrix below) is a rolling trailing window, not a calendar
+# month — a student's average always covers their last 30 days of exams,
+# regardless of what day of the month it is today.
+MONTH_WINDOW_DAYS = 30
 
 
 @router.get("", response_model=list[CourseOut])
@@ -463,6 +472,121 @@ def my_dashboard(
         video_skip_flags=video_skip_flags,
         exam_speed_flags=exam_speed_flags,
     )
+
+
+@router.get("/mine/grades-matrix", response_model=GradesMatrixOut)
+def my_grades_matrix(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> GradesMatrixOut:
+    """Cross-chapter per-student-per-exam grades table for the Teacher
+    Dashboard — one row per completed exam attempt in a chapter this
+    teacher manages (same chapter scoping as my_dashboard/my_managed_courses
+    above), each carrying that student's own rolling averages for context:
+
+    - month_avg_score_percent: the student's average score across their
+      completed attempts in the last MONTH_WINDOW_DAYS days, across every
+      exam in every chapter this teacher manages (not just this one exam).
+    - chapter_avg_score_percent: the student's average score across ALL of
+      their completed attempts within this row's own chapter — all-time,
+      not time-boxed, unlike the month average above.
+
+    student_code is always None for now — a placeholder column for the
+    not-yet-built per-student QR/code feature (see the project's own
+    outstanding-work notes), added so the mobile table already has the
+    column ready and doesn't need another schema change once codes exist.
+    """
+    query = db.query(Course)
+    if current_user.role == UserRole.admin:
+        pass
+    else:
+        query = query.join(TeacherProfile, TeacherProfile.id == Course.teacher_id).filter(
+            TeacherProfile.user_id == current_user.id
+        )
+    courses = query.all()
+    course_ids = [c.id for c in courses]
+    course_titles = {c.id: c.title for c in courses}
+    if not course_ids:
+        return GradesMatrixOut(rows=[])
+
+    question_counts = dict(
+        db.query(Question.exam_id, func.count(Question.id))
+        .join(Exam, Exam.id == Question.exam_id)
+        .filter(Exam.course_id.in_(course_ids))
+        .group_by(Question.exam_id)
+        .all()
+    )
+
+    attempt_rows = (
+        db.query(ExamAttempt, Exam, User)
+        .join(Exam, Exam.id == ExamAttempt.exam_id)
+        .join(User, User.id == ExamAttempt.user_id)
+        .join(Course, Course.id == Exam.course_id)
+        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+        .order_by(Course.id, User.full_name, ExamAttempt.submitted_at.desc())
+        .all()
+    )
+    if not attempt_rows:
+        return GradesMatrixOut(rows=[])
+
+    attempt_ids = [attempt.id for attempt, _, _ in attempt_rows]
+    correct_counts = dict(
+        db.query(QuestionAttempt.exam_attempt_id, func.count(QuestionAttempt.id))
+        .filter(QuestionAttempt.exam_attempt_id.in_(attempt_ids), QuestionAttempt.is_correct.is_(True))
+        .group_by(QuestionAttempt.exam_attempt_id)
+        .all()
+    )
+
+    # Per-student trailing-window average, scoped to this teacher's exams
+    # only (never another teacher's, even for the same student).
+    month_cutoff = datetime.now(timezone.utc) - timedelta(days=MONTH_WINDOW_DAYS)
+    month_avg_rows = (
+        db.query(ExamAttempt.user_id, func.avg(ExamAttempt.score_percent))
+        .join(Exam, Exam.id == ExamAttempt.exam_id)
+        .filter(
+            Exam.course_id.in_(course_ids),
+            ExamAttempt.submitted_at.isnot(None),
+            ExamAttempt.submitted_at >= month_cutoff,
+        )
+        .group_by(ExamAttempt.user_id)
+        .all()
+    )
+    month_avg_by_user = {user_id: float(avg) for user_id, avg in month_avg_rows if avg is not None}
+
+    # Per-student, per-chapter all-time average.
+    chapter_avg_rows = (
+        db.query(ExamAttempt.user_id, Exam.course_id, func.avg(ExamAttempt.score_percent))
+        .join(Exam, Exam.id == ExamAttempt.exam_id)
+        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+        .group_by(ExamAttempt.user_id, Exam.course_id)
+        .all()
+    )
+    chapter_avg_by_user_course = {
+        (user_id, course_id): float(avg) for user_id, course_id, avg in chapter_avg_rows if avg is not None
+    }
+
+    rows: list[StudentExamGradeRow] = []
+    for attempt, exam, user in attempt_rows:
+        rows.append(
+            StudentExamGradeRow(
+                user_id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                student_code=None,
+                course_id=exam.course_id,
+                course_title=course_titles.get(exam.course_id, ""),
+                exam_id=exam.id,
+                exam_title=exam.title,
+                correct_count=correct_counts.get(attempt.id, 0),
+                question_count=question_counts.get(exam.id, 0),
+                score_percent=attempt.score_percent,
+                submitted_at=attempt.submitted_at,
+                month_avg_score_percent=month_avg_by_user.get(user.id),
+                chapter_avg_score_percent=chapter_avg_by_user_course.get((user.id, exam.course_id)),
+            )
+        )
+
+    return GradesMatrixOut(rows=rows)
 
 
 @router.get("/{course_id}/student-report", response_model=CourseStudentReportOut)

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -246,6 +247,43 @@ class TeacherDashboardOut(BaseModel):
     # — see my_dashboard for how each is computed.
     video_skip_flags: list[VideoSkipFlagOut] = []
     exam_speed_flags: list[ExamSpeedFlagOut] = []
+
+
+class StudentExamGradeRow(BaseModel):
+    """One row in the Teacher Dashboard's cross-chapter grades matrix — see
+    GET /api/v1/courses/mine/grades-matrix. One student's one completed
+    exam attempt, alongside that same student's own rolling averages for
+    context (see my_grades_matrix in app/api/routes/courses.py for exactly
+    how each average is scoped/windowed).
+
+    student_code is always None for now — a placeholder for the
+    not-yet-built per-student QR/code feature, so the mobile table already
+    has the column ready and won't need another schema change once codes
+    exist."""
+
+    user_id: uuid.UUID
+    full_name: str | None
+    email: str
+    student_code: str | None = None
+    course_id: uuid.UUID
+    course_title: str
+    exam_id: uuid.UUID
+    exam_title: str
+    correct_count: int
+    question_count: int
+    score_percent: float | None
+    submitted_at: datetime
+    # This student's average score across their completed attempts in the
+    # last MONTH_WINDOW_DAYS days, across every exam in every chapter this
+    # teacher manages (not just this row's own exam/chapter).
+    month_avg_score_percent: float | None = None
+    # This student's average score across ALL of their completed attempts
+    # within this row's own chapter — all-time, not time-boxed.
+    chapter_avg_score_percent: float | None = None
+
+
+class GradesMatrixOut(BaseModel):
+    rows: list[StudentExamGradeRow] = []
 
 
 class StudentReportRow(BaseModel):

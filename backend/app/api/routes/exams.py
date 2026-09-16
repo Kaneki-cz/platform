@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import ensure_can_manage_course, get_current_user, require_instructor_or_admin
@@ -182,6 +183,19 @@ def list_exam_attempts(
         .all()
     )
 
+    # Raw correct-answer count per attempt — QuestionAttempt.exam_attempt_id
+    # groups a sitting's answers together (see that model's docstring), so
+    # this is a single grouped count rather than N+1 queries per attempt.
+    attempt_ids = [attempt.id for attempt, _ in rows]
+    correct_counts: dict[uuid.UUID, int] = {}
+    if attempt_ids:
+        correct_counts = dict(
+            db.query(QuestionAttempt.exam_attempt_id, func.count(QuestionAttempt.id))
+            .filter(QuestionAttempt.exam_attempt_id.in_(attempt_ids), QuestionAttempt.is_correct.is_(True))
+            .group_by(QuestionAttempt.exam_attempt_id)
+            .all()
+        )
+
     attempts: list[ExamAttemptRow] = []
     for attempt, user in rows:
         is_fast = (
@@ -196,6 +210,7 @@ def list_exam_attempts(
                 full_name=user.full_name,
                 email=user.email,
                 score_percent=attempt.score_percent,
+                correct_count=correct_counts.get(attempt.id, 0),
                 passed=attempt.passed,
                 duration_seconds=attempt.duration_seconds,
                 started_at=attempt.started_at,

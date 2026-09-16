@@ -111,6 +111,13 @@ class ExamAttemptRow(BaseModel):
     full_name: str | None
     email: str
     score_percent: float | None
+    # Raw "X out of Y correct" — added because a bare percentage wasn't
+    # enough for the teacher to see at a glance (e.g. "7/10" reads
+    # differently from a plain "70%"). Computed from QuestionAttempt rows
+    # tied to this attempt (see list_exam_attempts), not stored on
+    # ExamAttempt itself — no migration needed. Pair with the parent
+    # ExamAttemptsOut.question_count for the denominator.
+    correct_count: int = 0
     passed: bool
     duration_seconds: int | None
     started_at: datetime
