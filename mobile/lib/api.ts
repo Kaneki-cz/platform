@@ -20,6 +20,7 @@ import type {
   ExamStatus,
   ExamSubmitResult,
   ExamUpdateInput,
+  GradesMatrixData,
   LessonAccessCode,
   LessonCreateInput,
   LessonDetail,
@@ -422,6 +423,12 @@ export function myManagedCourses() {
  * aggregate itself. */
 export function myDashboard() {
   return request<TeacherDashboard>('/api/v1/courses/mine/dashboard');
+}
+
+/** Cross-chapter per-student-per-exam grades table for the Teacher
+ * Dashboard's grades-matrix section — see GradesMatrixData/StudentExamGradeRow. */
+export function getGradesMatrix() {
+  return request<GradesMatrixData>('/api/v1/courses/mine/grades-matrix');
 }
 
 /** One chapter's student-activity report — every student who has opened a

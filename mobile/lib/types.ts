@@ -199,6 +199,35 @@ export interface TeacherDashboard {
   exam_speed_flags: ExamSpeedFlag[];
 }
 
+// One row in the Teacher Dashboard's cross-chapter grades matrix — see
+// GET /api/v1/courses/mine/grades-matrix. student_code is always null for
+// now (the per-student QR/code feature hasn't been built yet); kept here so
+// the table already has the column ready.
+export interface StudentExamGradeRow {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  student_code: string | null;
+  course_id: string;
+  course_title: string;
+  exam_id: string;
+  exam_title: string;
+  correct_count: number;
+  question_count: number;
+  score_percent: number | null;
+  submitted_at: string;
+  // This student's average across their last-30-days completed attempts,
+  // across every chapter this teacher manages (not just this row's exam).
+  month_avg_score_percent: number | null;
+  // This student's average across ALL of their completed attempts within
+  // this row's own chapter — all-time, not time-boxed.
+  chapter_avg_score_percent: number | null;
+}
+
+export interface GradesMatrixData {
+  rows: StudentExamGradeRow[];
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -540,6 +569,9 @@ export interface ExamAttemptRow {
   full_name: string | null;
   email: string;
   score_percent: number | null;
+  // Raw "X correct" — pair with the parent ExamAttemptsData.question_count
+  // for the "X/Y" denominator.
+  correct_count: number;
   passed: boolean;
   duration_seconds: number | null;
   started_at: string;

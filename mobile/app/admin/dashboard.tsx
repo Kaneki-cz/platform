@@ -1,12 +1,19 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
-import { myDashboard } from '@/lib/api';
+import { getGradesMatrix, myDashboard } from '@/lib/api';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon } from '@/lib/icons';
-import type { DashboardChapter, ExamSpeedFlag, TeacherDashboard, VideoSkipFlag } from '@/lib/types';
+import type {
+  DashboardChapter,
+  ExamSpeedFlag,
+  GradesMatrixData,
+  StudentExamGradeRow,
+  TeacherDashboard,
+  VideoSkipFlag,
+} from '@/lib/types';
 
 /**
  * 2026 "Simple & Clean" redesign pass — replaces the earlier version's
@@ -39,12 +46,33 @@ export default function TeacherDashboardScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [data, setData] = useState<TeacherDashboard | null>(null);
+  const [gradesMatrix, setGradesMatrix] = useState<GradesMatrixData | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       myDashboard().then(setData).catch(() => {});
+      getGradesMatrix().then(setGradesMatrix).catch(() => {});
     }, []),
   );
+
+  // One group per chapter, in the order its rows first appear (the backend
+  // already orders rows by chapter) — each group renders as its own small
+  // table (see GradesTable) instead of one giant table mixing every
+  // chapter's exams together.
+  const gradesByChapter = useMemo(() => {
+    const groups: { courseId: string; courseTitle: string; rows: StudentExamGradeRow[] }[] = [];
+    const indexByCourseId = new Map<string, number>();
+    for (const row of gradesMatrix?.rows ?? []) {
+      let idx = indexByCourseId.get(row.course_id);
+      if (idx === undefined) {
+        idx = groups.length;
+        indexByCourseId.set(row.course_id, idx);
+        groups.push({ courseId: row.course_id, courseTitle: row.course_title, rows: [] });
+      }
+      groups[idx].rows.push(row);
+    }
+    return groups;
+  }, [gradesMatrix]);
 
   if (!data) {
     return (
@@ -134,6 +162,18 @@ export default function TeacherDashboardScreen() {
                   );
                 })}
               </View>
+            </>
+          ) : null}
+
+          {gradesByChapter.length > 0 ? (
+            <>
+              <SectionLabel label="درجات الطلاب في الامتحانات" />
+              <Text style={styles.hint}>
+                درجة كل طالب في كل امتحان، ومتوسطه على آخر 30 يوم ومتوسطه في الفصل ده كامل.
+              </Text>
+              {gradesByChapter.map((group) => (
+                <GradesTable key={group.courseId} courseTitle={group.courseTitle} rows={group.rows} />
+              ))}
             </>
           ) : null}
 
@@ -262,6 +302,63 @@ function VideoSkipFlagRow({ flag }: { flag: VideoSkipFlag }) {
   );
 }
 
+// One chapter's grades matrix — a small, horizontally-scrollable table
+// (student → code placeholder → exam → score → 30-day average → chapter
+// average), grouped per chapter so a teacher managing several chapters
+// doesn't see one giant table mixing every exam together. student_code is
+// always "—" for now: the per-student QR/code feature hasn't been built
+// yet (see StudentExamGradeRow's own comment) — the column is here so nothing
+// needs to change in this table once it exists.
+function GradesTable({ courseTitle, rows }: { courseTitle: string; rows: StudentExamGradeRow[] }) {
+  return (
+    <View style={styles.gradesTableBlock}>
+      <Text style={styles.gradesTableTitle} numberOfLines={1}>
+        {courseTitle}
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View>
+          <View style={styles.gradesRow}>
+            <Text style={[styles.gradesHeaderCell, gradesCols.name]}>الطالب</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.code]}>الكود</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.exam]}>الامتحان</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.score]}>الدرجة</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.avg]}>متوسط الشهر</Text>
+            <Text style={[styles.gradesHeaderCell, gradesCols.avg]}>متوسط الفصل</Text>
+          </View>
+          {rows.map((r, i) => (
+            <View key={`${r.exam_id}-${r.user_id}-${i}`} style={[styles.gradesRow, i % 2 === 1 && styles.gradesRowAlt]}>
+              <Text style={[styles.gradesCell, gradesCols.name, styles.gradesCellBold]} numberOfLines={1}>
+                {r.full_name?.trim() || r.email}
+              </Text>
+              <Text style={[styles.gradesCell, gradesCols.code]}>{r.student_code ?? '—'}</Text>
+              <Text style={[styles.gradesCell, gradesCols.exam]} numberOfLines={1}>
+                {r.exam_title}
+              </Text>
+              <Text style={[styles.gradesCell, gradesCols.score, styles.gradesCellBold]}>
+                {r.correct_count}/{r.question_count || '—'}
+              </Text>
+              <Text style={[styles.gradesCell, gradesCols.avg]}>
+                {r.month_avg_score_percent != null ? `${Math.round(r.month_avg_score_percent)}%` : '—'}
+              </Text>
+              <Text style={[styles.gradesCell, gradesCols.avg]}>
+                {r.chapter_avg_score_percent != null ? `${Math.round(r.chapter_avg_score_percent)}%` : '—'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const gradesCols = StyleSheet.create({
+  name: { width: 120 },
+  code: { width: 56 },
+  exam: { width: 140 },
+  score: { width: 60 },
+  avg: { width: 76 },
+});
+
 function ChapterCard({ chapter, onPress }: { chapter: DashboardChapter; onPress: () => void }) {
   return (
     <Pressable style={({ pressed }) => [styles.chapCard, pressed && styles.chapCardPressed]} onPress={onPress}>
@@ -350,6 +447,28 @@ const styles = StyleSheet.create({
 
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
   soonText: { fontSize: 12, color: colors.textFaint, lineHeight: 19, textAlign: 'right' },
+
+  gradesTableBlock: { marginBottom: 18 },
+  gradesTableTitle: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 8, textAlign: 'right' },
+  gradesRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  gradesRowAlt: { backgroundColor: colors.surface },
+  gradesHeaderCell: {
+    fontSize: 10,
+    color: colors.textFaint,
+    fontFamily: fonts.semiBold,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    textAlign: 'center',
+  },
+  gradesCell: {
+    fontSize: 11.5,
+    color: colors.textMuted,
+    fontFamily: fonts.medium,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    textAlign: 'center',
+  },
+  gradesCellBold: { color: colors.text, fontFamily: fonts.bold },
 
   flagRow: {
     flexDirection: 'row',
