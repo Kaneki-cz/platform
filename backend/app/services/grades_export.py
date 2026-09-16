@@ -52,14 +52,15 @@ def _rgb_font(hex6: str, **kwargs) -> Font:
 
 
 # --- palette -------------------------------------------------------------
-# Echoes the mobile app's own cyan/violet brand (see mobile/constants/
-# theme.ts) instead of a generic gray/navy spreadsheet look, adapted for a
-# light (not dark) spreadsheet surface — a solid dark fill reading white
-# text everywhere would be exhausting to scroll through in Excel/WPS.
-HEADER_FILL = _solid("0E7490")  # deep cyan-teal — echoes colors.primary, dark enough for white text
+# "Classic navy" — one of 4 directions mocked up on a design canvas and
+# picked by the user over the earlier cyan/teal look (see the design
+# canvas shared in-session). Kept as a light spreadsheet surface with a
+# dark header band, never a solid dark fill reading white text everywhere
+# — that would be exhausting to scroll through in Excel/WPS.
+HEADER_FILL = _solid("1E3A8A")  # classic dark navy blue
 HEADER_FONT = _rgb_font("FFFFFF", bold=True, size=11, name="Calibri")
-TITLE_FONT = _rgb_font("0E7490", bold=True, size=13, name="Calibri")
-ROW_ALT_FILL = _solid("ECFEFF")  # faint cyan tint zebra stripe (cyan-50)
+TITLE_FONT = _rgb_font("1E3A8A", bold=True, size=13, name="Calibri")
+ROW_ALT_FILL = _solid("EFF6FF")  # faint navy-tinted zebra stripe (blue-50)
 PASS_FILL = _solid("DCFCE7")  # soft green — echoes colors.success
 PASS_FONT = _rgb_font("15803D", bold=True)
 FAIL_FILL = _solid("FEE2E2")  # soft red — echoes colors.danger
@@ -69,10 +70,10 @@ BODY_FONT = _rgb_font("374151")
 THIN = Side(style="thin", color="FFD8DEE9")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 HEADER_BORDER = Border(
-    left=Side(style="thin", color="FF0E7490"),
-    right=Side(style="thin", color="FF0E7490"),
-    top=Side(style="thin", color="FF0E7490"),
-    bottom=Side(style="medium", color="FF0E7490"),
+    left=Side(style="thin", color="FF1E3A8A"),
+    right=Side(style="thin", color="FF1E3A8A"),
+    top=Side(style="thin", color="FF1E3A8A"),
+    bottom=Side(style="medium", color="FF1E3A8A"),
 )
 
 # order matters — this is the literal column order in the sheet
