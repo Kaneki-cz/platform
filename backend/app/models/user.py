@@ -86,6 +86,20 @@ class User(Base):
     # teacher. Requires migrate_v14_enrollment.py on an existing database.
     full_name_ar: Mapped[str | None] = mapped_column(String(255), nullable=True)
     grade: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # A persistent, human-typeable identifier for this student (e.g.
+    # "7F3K-9QRT") — shown as a QR code on the student's own profile screen
+    # and scanned by a teacher/admin to mark attendance (see
+    # app/api/routes/attendance.py) and to identify them on the Teacher
+    # Dashboard's grades table/Excel export ("الكود" column, previously
+    # always blank). NULL until the student's own QR-code screen is opened
+    # for the first time, which lazily generates and persists one (see
+    # get_or_create_student_code in attendance.py) — never backfilled in
+    # bulk, so an inactive account simply never gets one. Unlike
+    # LessonAccessCode's codes (single-use, per-lecture), this is one
+    # PERMANENT code per student, reused for every scan for as long as
+    # their account exists. Requires migrate_v16_attendance.py on an
+    # existing database.
+    student_code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True, index=True)
 
     progress: Mapped[list["LessonProgress"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")

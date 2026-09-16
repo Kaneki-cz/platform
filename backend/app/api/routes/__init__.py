@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     admin,
     ai_chat,
+    attendance,
     auth,
     courses,
     enrollment,
@@ -32,3 +33,4 @@ api_router.include_router(ai_chat.router)
 api_router.include_router(admin.router)
 api_router.include_router(security.router)
 api_router.include_router(enrollment.router)
+api_router.include_router(attendance.router)
