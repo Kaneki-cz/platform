@@ -1,6 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-
-import { getSavedLanguage, setSavedLanguage } from '@/lib/api';
+import React, { createContext, useContext } from 'react';
 
 export type Language = 'ar' | 'en';
 
@@ -10,50 +8,32 @@ interface LanguageContextValue {
   toggleLanguage: () => void;
 }
 
-// Defaults to Arabic (this app's primary audience) until the saved
-// preference (if any) loads from SecureStore, a moment after first mount.
-const LanguageContext = createContext<LanguageContextValue>({
-  language: 'ar',
+// The app's UI language is now fixed to English everywhere — student-facing
+// screens, admin screens, the Assistant tab's own chrome, all of it. This was
+// an explicit product decision, not a bug: Arabic CONTENT typed by
+// admins/teachers (course titles, lesson text, question prompts, chat
+// messages...) is backend data and was never part of this toggle in the
+// first place, so it's completely unaffected — only each screen's own UI
+// strings (its STRINGS.ar/STRINGS.en table) are pinned to 'en' here.
+// setLanguage/toggleLanguage are kept as harmless no-ops (rather than
+// stripped out, which would mean touching every screen that destructures
+// them) so nothing can silently flip the UI back to Arabic.
+const FIXED_VALUE: LanguageContextValue = {
+  language: 'en',
   setLanguage: () => {},
   toggleLanguage: () => {},
-});
+};
+
+const LanguageContext = createContext<LanguageContextValue>(FIXED_VALUE);
 
 /**
- * App-wide UI language (Arabic/English) for the student-facing screens —
- * login/register, home, courses, lessons, profile, and the AI Assistant's
- * own chrome. This is entirely separate from the AI Assistant's answers,
- * which already follow whatever language the student's question was asked
- * in regardless of this setting. The admin screens are not covered by this
- * toggle and stay English.
- *
- * Wraps the whole app (see app/_layout.tsx) so any screen can call
- * useLanguage() and get the current choice plus a way to change it — the
- * choice is persisted via SecureStore (lib/api.ts) so it survives app
- * restarts, and switching it anywhere (e.g. the Assistant tab's own toggle)
- * updates every other screen immediately since they all read from this one
- * shared value.
+ * App-wide UI language provider — see the fixed-to-English note above.
+ * Still wraps the whole app (app/_layout.tsx) and still exposes the same
+ * useLanguage() shape every screen already calls, so no other file needs to
+ * change; every consumer just always reads back 'en' now.
  */
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('ar');
-
-  useEffect(() => {
-    getSavedLanguage()
-      .then((saved) => {
-        if (saved) setLanguageState(saved);
-      })
-      .catch(() => {});
-  }, []);
-
-  const setLanguage = (next: Language) => {
-    setLanguageState(next);
-    setSavedLanguage(next).catch(() => {});
-  };
-
-  const toggleLanguage = () => setLanguage(language === 'ar' ? 'en' : 'ar');
-
-  return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage }}>{children}</LanguageContext.Provider>
-  );
+  return <LanguageContext.Provider value={FIXED_VALUE}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage(): LanguageContextValue {

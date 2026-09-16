@@ -86,7 +86,7 @@ function MyAttendanceCode({ t }: { t: (typeof STRINGS)['ar'] }) {
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const { language, setLanguage } = useLanguage();
+  const { language } = useLanguage();
   const t = STRINGS[language];
   const router = useRouter();
   const canManage = user?.role === 'instructor' || user?.role === 'admin';
@@ -108,28 +108,6 @@ export default function ProfileScreen() {
       </View>
 
       {user?.role === 'student' ? <MyAttendanceCode t={t} /> : null}
-
-      <View style={styles.languageRow}>
-        <Text style={styles.languageLabel}>{t.language}</Text>
-        <View style={styles.languageSwitch}>
-          <Pressable
-            style={[styles.languageOption, language === 'ar' && styles.languageOptionActive]}
-            onPress={() => setLanguage('ar')}
-          >
-            <Text style={[styles.languageOptionText, language === 'ar' && styles.languageOptionTextActive]}>
-              {t.languageArabic}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.languageOption, language === 'en' && styles.languageOptionActive]}
-            onPress={() => setLanguage('en')}
-          >
-            <Text style={[styles.languageOptionText, language === 'en' && styles.languageOptionTextActive]}>
-              {t.languageEnglish}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
 
       {canManage ? (
         // Gradient pill (2026 redesign pass, missed in the first
