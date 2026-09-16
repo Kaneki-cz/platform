@@ -21,11 +21,14 @@ import {
   ApiError,
   createCourse,
   createTeacher,
+  createTeacherGroup,
   deleteCourse,
   deleteTeacher,
+  deleteTeacherGroup,
   getSubject,
   linkTeacherAccount,
   listAllUsers,
+  listTeacherGroups,
   listTeachers,
   unlinkTeacherAccount,
   updateCourse,
@@ -34,7 +37,7 @@ import {
 } from '@/lib/api';
 import { colors, radius, spacing } from '@/constants/theme';
 import { subjectIconSource } from '@/lib/subjectIcon';
-import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher, type User } from '@/lib/types';
+import { GRADE_LEVELS, type GradeLevel, type SubjectDetail, type Teacher, type TeacherGroup, type User } from '@/lib/types';
 
 // width/height come straight from the picker's own asset — see
 // ImageCropModal's initialSize prop for why we pass these through instead
@@ -70,6 +73,12 @@ export default function ManageSubjectScreen() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [emailSuggestionsDismissed, setEmailSuggestionsDismissed] = useState(false);
 
+  // --- Teacher groups (only while editing an existing teacher card) ------
+  const [teacherGroups, setTeacherGroups] = useState<TeacherGroup[]>([]);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+
   // --- Chapter form state -----------------------------------------------
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -98,6 +107,12 @@ export default function ManageSubjectScreen() {
   React.useEffect(() => {
     listAllUsers().then(setAllUsers).catch(() => {});
   }, []);
+
+  // Reload the group list whenever the selected teacher changes (or is cleared).
+  React.useEffect(() => {
+    if (!teacherEditingId) { setTeacherGroups([]); return; }
+    listTeacherGroups(teacherEditingId).then(setTeacherGroups).catch(() => {});
+  }, [teacherEditingId]);
 
   // --- Photo picking (shared by teacher photo + chapter cover) ----------
   const pickRawImage = async (kind: 'teacher' | 'cover') => {
@@ -154,6 +169,9 @@ export default function ManageSubjectScreen() {
     setTeacherLinkEmail('');
     setTeacherLinkError(null);
     setEmailSuggestionsDismissed(false);
+    setTeacherGroups([]);
+    setNewGroupName('');
+    setGroupError(null);
   };
 
   const onEditTeacher = (teacher: Teacher) => {
@@ -243,6 +261,45 @@ export default function ManageSubjectScreen() {
     } finally {
       setTeacherLinkSubmitting(false);
     }
+  };
+
+  // --- Teacher groups -----------------------------------------------------
+  const onAddGroup = async () => {
+    if (!teacherEditingId || !newGroupName.trim()) return;
+    setGroupError(null);
+    setGroupSubmitting(true);
+    try {
+      const created = await createTeacherGroup(teacherEditingId, newGroupName.trim());
+      setTeacherGroups((prev) => [...prev, created]);
+      setNewGroupName('');
+    } catch (e) {
+      setGroupError(e instanceof ApiError ? e.message : 'Something went wrong.');
+    } finally {
+      setGroupSubmitting(false);
+    }
+  };
+
+  const onDeleteGroup = (groupId: string, groupName: string) => {
+    if (!teacherEditingId) return;
+    Alert.alert(
+      'Delete group?',
+      `"${groupName}" will be removed. Students currently in this group will become ungrouped.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTeacherGroup(teacherEditingId, groupId);
+              setTeacherGroups((prev) => prev.filter((g) => g.id !== groupId));
+            } catch (e) {
+              Alert.alert('Could not delete', e instanceof ApiError ? e.message : 'Something went wrong.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   // --- Chapters -----------------------------------------------------------
@@ -493,6 +550,53 @@ export default function ManageSubjectScreen() {
             </>
           )}
           {teacherLinkError ? <Text style={styles.error}>{teacherLinkError}</Text> : null}
+        </View>
+      ) : null}
+
+      {/* --- Teacher groups (only while editing an existing teacher) ------- */}
+      {editingTeacher ? (
+        <View style={styles.groupBox}>
+          <Text style={styles.label}>Student groups</Text>
+          <Text style={styles.hint}>
+            Create named groups for {editingTeacher.name}'s students. Students pick a group when they first open a lesson.
+          </Text>
+
+          {teacherGroups.length > 0 ? (
+            <View style={styles.groupList}>
+              {teacherGroups.map((g) => (
+                <View key={g.id} style={styles.groupRow}>
+                  <Text style={styles.groupName}>{g.name}</Text>
+                  <Pressable onPress={() => onDeleteGroup(g.id, g.name)} hitSlop={8}>
+                    <Text style={styles.removeText}>Delete</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.hint, { marginTop: 8 }]}>No groups yet.</Text>
+          )}
+
+          <View style={styles.groupInputRow}>
+            <TextInput
+              style={[styles.input, styles.groupInput]}
+              placeholder="Group name, e.g. المجموعة أ"
+              placeholderTextColor="#9ca3af"
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+            />
+            <Pressable
+              style={[styles.groupAddButton, groupSubmitting && styles.submitBtnDisabled]}
+              onPress={onAddGroup}
+              disabled={groupSubmitting || !newGroupName.trim()}
+            >
+              {groupSubmitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.groupAddButtonText}>+ Add</Text>
+              )}
+            </Pressable>
+          </View>
+          {groupError ? <Text style={styles.error}>{groupError}</Text> : null}
         </View>
       ) : null}
 
@@ -768,6 +872,47 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   unlinkButtonText: { color: colors.danger, fontWeight: '600' },
+  groupBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  groupList: {
+    marginTop: spacing.sm,
+    gap: 4,
+  },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  groupName: { fontSize: 14, color: colors.text, fontWeight: '500', flex: 1 },
+  groupInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: spacing.sm,
+  },
+  groupInput: { flex: 1, marginBottom: 0 },
+  groupAddButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitBtnDisabled: { opacity: 0.6 },
+  groupAddButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   formActions: { flexDirection: 'row', gap: 10, marginBottom: 20, marginTop: spacing.sm },
   formActionsButton: { flex: 1, marginBottom: 0 },
   cancelButton: {
