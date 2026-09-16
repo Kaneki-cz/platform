@@ -113,13 +113,24 @@ export default function AdminHomeScreen() {
             <Text style={styles.utilityArrow}>›</Text>
           </Scalable>
 
-          <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/video-views')}>
+          <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/video-views')}>
             <View style={styles.utilityIconWrap}>
               <Text style={styles.utilityIcon}>🔒</Text>
             </View>
             <View style={styles.utilityTextWrap}>
               <Text style={styles.utilityTitle}>Video View Limits</Text>
               <Text style={styles.utilitySubtitle}>Fix up a student who hit a lecture's view limit</Text>
+            </View>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Scalable>
+
+          <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/students')}>
+            <View style={styles.utilityIconWrap}>
+              <Text style={styles.utilityIcon}>🧑‍🎓</Text>
+            </View>
+            <View style={styles.utilityTextWrap}>
+              <Text style={styles.utilityTitle}>Student Enrollments</Text>
+              <Text style={styles.utilitySubtitle}>View each student's group per teacher & reassign</Text>
             </View>
             <Text style={styles.utilityArrow}>›</Text>
           </Scalable>
