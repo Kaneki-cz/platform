@@ -323,15 +323,28 @@ const styles = StyleSheet.create({
   },
   courseCoverWrap: {
     width: '100%',
-    height: 140,
+    // 16:9 — exactly the aspect ratio the admin's cover-image crop tool
+    // enforces at upload time (see components/ImageCropPicker.tsx's
+    // aspectRatio prop, always 16/9 for a chapter/lecture cover). A fixed
+    // px height here was only ever an approximation of that ratio at one
+    // particular card width, so at any other width (this card is full-width
+    // when it's the only one on its row vs. half-width otherwise — see
+    // `columns` above) 'contain' below showed visible letterbox bars even
+    // though the source image was already the "right" shape. Driving the
+    // box's height off its own measured width instead keeps it pixel-exact
+    // to 16:9 at every width, so a properly-cropped cover fills the box
+    // completely with no bars, while 'contain' still guarantees nothing is
+    // ever cropped off if an older/odd-ratio image slips through.
+    aspectRatio: 16 / 9,
     borderRadius: radius.sm,
     overflow: 'hidden',
     marginBottom: spacing.xs,
     backgroundColor: colors.surfaceAlt,
   },
-  // Taller poster when it's the only card on the row (see `columns` above) —
-  // a full-width card at the normal 140px height reads as squat/stretched.
-  courseCoverWrapWide: { height: 200 },
+  // No longer needed for sizing (aspectRatio above already scales correctly
+  // at any card width) — kept as a harmless no-op so the `columns === 1 &&
+  // styles.courseCoverWrapWide` call site doesn't need touching.
+  courseCoverWrapWide: {},
   courseCover: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   courseScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
   courseBadge: {

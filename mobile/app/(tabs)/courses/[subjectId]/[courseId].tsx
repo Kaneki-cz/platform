@@ -428,15 +428,28 @@ const styles = StyleSheet.create({
   posterCardPressed: { opacity: 0.85 },
   posterCoverWrap: {
     width: '100%',
-    height: 110,
+    // 16:9 — exactly the aspect ratio the admin's lecture-cover crop tool
+    // enforces at upload time (app/admin/course/[id]/index.tsx's
+    // ImageCropModal, aspectRatio={16/9}). A fixed px height here was only
+    // ever an approximation of that ratio at one particular card width, so
+    // at any other width (this card is full-width when it's the only item
+    // in the timeline vs. half-width otherwise — see `isWide` above)
+    // 'contain' below showed visible letterbox bars even though the source
+    // image was already the "right" shape. Driving the box's height off its
+    // own measured width instead keeps it pixel-exact to 16:9 at every
+    // width, so a properly-cropped cover fills the box completely with no
+    // bars, while 'contain' still guarantees nothing is ever cropped off if
+    // an older/odd-ratio image slips through.
+    aspectRatio: 16 / 9,
     borderRadius: radius.sm,
     overflow: 'hidden',
     marginBottom: spacing.xs,
     backgroundColor: colors.surfaceAlt,
   },
-  // Taller poster when it's the only card in the timeline (see `isWide`
-  // above) — matches the chapter grid's own courseCoverWrapWide.
-  posterCoverWrapWide: { height: 170 },
+  // No longer needed for sizing (aspectRatio above already scales correctly
+  // at any card width) — kept as a harmless no-op so the `isWide &&
+  // styles.posterCoverWrapWide` call sites don't need touching.
+  posterCoverWrapWide: {},
   posterCover: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   posterScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
   posterIndexBadge: {

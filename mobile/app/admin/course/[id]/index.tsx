@@ -789,7 +789,13 @@ const styles = StyleSheet.create({
   imagePreviewWrap: { marginBottom: 10 },
   imagePreview: {
     width: '100%',
-    height: 160,
+    // Matches the crop tool's own aspectRatio={16/9} below exactly, so this
+    // preview shows the cover the same way the student-facing lecture grid
+    // will (see app/(tabs)/courses/[subjectId]/[courseId].tsx's
+    // posterCoverWrap) — a static px height here was only an approximation
+    // of 16:9 and could show a sliver of letterbox bar that isn't actually
+    // there once displayed at the real card width.
+    aspectRatio: 16 / 9,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
   },

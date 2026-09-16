@@ -846,7 +846,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   teacherPhotoPicker: { width: 96, height: 96, borderRadius: radius.pill, alignSelf: 'flex-start' },
-  coverPicker: { width: '100%', height: 120 },
+  // Matches the crop tool's own aspectRatio (16/9 for a chapter cover, see
+  // this screen's ImageCropModal usage below) instead of an approximate
+  // static px height, so this preview isn't slightly letterboxed/cropped
+  // differently than the student-facing chapter grid ends up showing it.
+  coverPicker: { width: '100%', aspectRatio: 16 / 9 },
   photoPickerText: { color: colors.primary, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.sm },
   linkBox: {
     backgroundColor: colors.surfaceAlt,
