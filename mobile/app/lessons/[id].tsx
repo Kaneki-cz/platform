@@ -2,12 +2,14 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { getLesson, getLessonQuestions, resolveVideoUrl, submitQuestionAttempt, updateProgress } from '@/lib/api';
+import { getEnrollmentStatus, getLesson, getLessonQuestions, resolveVideoUrl, submitQuestionAttempt, updateProgress } from '@/lib/api';
+import { EnrollmentModal } from '@/components/EnrollmentModal';
 import { LessonVideoPlayer, type LessonVideoPlayerHandle } from '@/components/LessonVideoPlayer';
 import { SegmentQuiz } from '@/components/SegmentQuiz';
+import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { colors, spacing } from '@/constants/theme';
-import type { LessonDetail, Question } from '@/lib/types';
+import type { EnrollmentStatus, LessonDetail, Question } from '@/lib/types';
 
 // Don't bother persisting the first few seconds of playback — avoids a
 // flood of near-zero progress writes the instant the video starts.
@@ -68,6 +70,7 @@ function buildSegments(questions: Question[], duration: number | null): Segment[
 
 export default function LessonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
   const { language } = useLanguage();
   const t = STRINGS[language];
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
@@ -84,6 +87,10 @@ export default function LessonScreen() {
   const [attemptOverrides, setAttemptOverrides] = useState<Record<string, boolean>>({});
   const [duration, setDuration] = useState<number | null>(null);
   const [activeQuiz, setActiveQuiz] = useState<Segment | null>(null);
+  // Enrollment — only relevant for students. null = not yet checked (or no
+  // teacher on this lesson); checked after lesson data loads.
+  const [enrollmentStatus, setEnrollmentStatus] = useState<EnrollmentStatus | null>(null);
+  const [showEnrollment, setShowEnrollment] = useState(false);
   const lastSentPercent = useRef(0);
   const videoRef = useRef<LessonVideoPlayerHandle>(null);
 
@@ -97,6 +104,8 @@ export default function LessonScreen() {
       setDuration(null);
       setActiveQuiz(null);
       setResolvedVideoUrl(null);
+      setEnrollmentStatus(null);
+      setShowEnrollment(false);
       getLesson(id)
         .then((l) => {
           setLesson(l);
@@ -112,6 +121,22 @@ export default function LessonScreen() {
         .catch(() => {});
     }, [id]),
   );
+
+  // Check enrollment once lesson data is loaded — students only, and only
+  // when the lesson belongs to a teacher. Shows EnrollmentModal if the
+  // student hasn't enrolled yet OR if groups were added since they enrolled.
+  useEffect(() => {
+    if (!lesson?.teacher_id) return;
+    if (user?.role !== 'student') return;
+    getEnrollmentStatus(lesson.teacher_id)
+      .then((s) => {
+        setEnrollmentStatus(s);
+        if (!s.enrolled || s.needs_group) setShowEnrollment(true);
+      })
+      .catch(() => {
+        // Network error — don't block the lesson; let them watch anyway.
+      });
+  }, [lesson?.teacher_id, user?.role]);
 
   // Resolves lesson.video_url (a raw stored value — an external link, a
   // "b2:<key>" marker, or a legacy relative /media/ path) into an actual
@@ -235,6 +260,19 @@ export default function LessonScreen() {
           questions={activeQuiz.questions}
           onSubmitAnswer={onSubmitAnswer}
           onFinish={onFinishQuiz}
+        />
+      ) : null}
+
+      {showEnrollment && enrollmentStatus && lesson?.teacher_id ? (
+        <EnrollmentModal
+          teacherId={lesson.teacher_id}
+          status={enrollmentStatus}
+          language={language}
+          onDone={(updated) => {
+            setEnrollmentStatus(updated);
+            // Keep showing if group still needed (e.g. validation edge case)
+            setShowEnrollment(updated.needs_group);
+          }}
         />
       ) : null}
     </View>

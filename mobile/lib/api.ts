@@ -10,6 +10,8 @@ import type {
   CourseDetail,
   CourseStudentReport,
   CourseUpdateInput,
+  EnrollmentStatus,
+  EnrollmentSubmit,
   ExamAdmin,
   ExamAnswerSubmit,
   ExamCreateInput,
@@ -35,6 +37,7 @@ import type {
   Teacher,
   TeacherCreateInput,
   TeacherDashboard,
+  TeacherGroup,
   TeacherUpdateInput,
   UsageInfo,
   User,
@@ -781,4 +784,64 @@ export async function getSavedLanguage(): Promise<'ar' | 'en' | null> {
 
 export async function setSavedLanguage(language: 'ar' | 'en'): Promise<void> {
   await SecureStore.setItemAsync(LANGUAGE_KEY, language);
+}
+
+// ── Teacher groups ────────────────────────────────────────────────────────────
+
+export function listTeacherGroups(teacherId: string): Promise<TeacherGroup[]> {
+  return request<TeacherGroup[]>(`/api/v1/teachers/${teacherId}/groups`);
+}
+
+export function createTeacherGroup(teacherId: string, name: string): Promise<TeacherGroup> {
+  return request<TeacherGroup>(`/api/v1/teachers/${teacherId}/groups`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteTeacherGroup(teacherId: string, groupId: string): Promise<void> {
+  return request<void>(`/api/v1/teachers/${teacherId}/groups/${groupId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ── Student enrollment ────────────────────────────────────────────────────────
+
+/** Returns the current student's enrollment status for a specific teacher.
+ * Called by the lesson screen right after lesson data loads. */
+export function getEnrollmentStatus(teacherId: string): Promise<EnrollmentStatus> {
+  return request<EnrollmentStatus>(`/api/v1/enrollment/${teacherId}`);
+}
+
+/** Create or update enrollment — called when the student submits EnrollmentModal. */
+export function submitEnrollment(teacherId: string, data: EnrollmentSubmit): Promise<EnrollmentStatus> {
+  return request<EnrollmentStatus>(`/api/v1/enrollment/${teacherId}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Admin: enrollment management ─────────────────────────────────────────────
+
+export function adminGetUserEnrollments(userId: string) {
+  return request<Array<{
+    teacher_id: string;
+    teacher_name: string | null;
+    group_id: string | null;
+    group_name: string | null;
+  }>>(`/api/v1/admin/enrollment/users/${userId}`);
+}
+
+export function adminUpdateUserEnrollment(
+  userId: string,
+  teacherId: string,
+  groupId: string | null,
+): Promise<EnrollmentStatus> {
+  return request<EnrollmentStatus>(
+    `/api/v1/admin/enrollment/users/${userId}/teachers/${teacherId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ group_id: groupId }),
+    },
+  );
 }

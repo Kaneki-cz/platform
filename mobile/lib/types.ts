@@ -20,6 +20,10 @@ export interface User {
   // Extra questions granted for TODAY only (on top of the above) — see
   // setUserAiLimit vs grantAiBonusQuestions in lib/api.ts.
   ai_bonus_questions_today: number;
+  // Enrollment info — set the first time the student fills out EnrollmentModal
+  // for any teacher. Stored globally (once, not per-teacher). Null until then.
+  full_name_ar: string | null;
+  grade: string | null;
 }
 
 export interface Subject {
@@ -207,6 +211,10 @@ export interface Lesson {
 
 export interface LessonDetail extends Lesson {
   content: string | null;
+  // TeacherProfile.id of the teacher who owns this lesson's chapter — used by
+  // the lesson screen to call the enrollment check. Null when the chapter has
+  // no teacher card assigned.
+  teacher_id: string | null;
   // The next three are only ever meaningful for a signed-in STUDENT on a
   // max_views-capped lesson (null/false otherwise — instructors/admins are
   // never capped, and uncapped lessons don't track this at all). See
@@ -216,6 +224,30 @@ export interface LessonDetail extends Lesson {
   views_used: number | null;
   views_allowed: number | null;
   view_limit_reached: boolean;
+}
+
+// ── Teacher groups + student enrollment ───────────────────────────────────────
+
+export interface TeacherGroup {
+  id: string;
+  name: string;
+}
+
+export interface EnrollmentStatus {
+  enrolled: boolean;
+  // True when the student is enrolled but has no group assigned while the
+  // teacher now has groups — mobile should re-show the group picker.
+  needs_group: boolean;
+  available_groups: TeacherGroup[];
+  current_group_id: string | null;
+  full_name_ar: string | null;
+  grade: string | null;
+}
+
+export interface EnrollmentSubmit {
+  full_name_ar: string;
+  grade: GradeLevel;
+  group_id: string | null;
 }
 
 // One student's view-count standing on one max_views-capped lesson — see
