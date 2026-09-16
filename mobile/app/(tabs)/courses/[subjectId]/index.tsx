@@ -130,6 +130,7 @@ export default function SubjectCoursesScreen() {
             courses={filteredCourses}
             emptyText={useTeacherFlow ? t.noChaptersForGrade : t.empty}
             onSelect={(course) => router.push(`/(tabs)/courses/${subjectId}/${course.id}`)}
+            subjectName={subject.name}
           />
         </View>
       )}
@@ -178,10 +179,19 @@ function CourseGrid({
   courses,
   emptyText,
   onSelect,
+  subjectName,
 }: {
   courses: Course[];
   emptyText: string;
   onSelect: (c: Course) => void;
+  // CourseGrid is a top-level function component, not a closure nested
+  // inside SubjectCoursesScreen, so it has no access to that screen's own
+  // `subject` state — a chapter-cover fallback here that referenced
+  // `subject.name` directly threw "ReferenceError: Property 'subject'
+  // doesn't exist" and crashed this whole screen the instant a chapter with
+  // no cover_image_url rendered (see subjectIconSource below). Passed down
+  // explicitly instead.
+  subjectName: string;
 }) {
   // A single chapter shouldn't be squeezed into a half-width grid cell (the
   // poster cover would get cropped hard on the sides and read as "cut off")
@@ -221,7 +231,7 @@ function CourseGrid({
               resizeMode="contain"
               fallback={
                 <View style={[styles.courseCover, styles.photoPlaceholder]}>
-                  <Image source={subjectIconSource(subject.name)} style={styles.subjectIconFallback} />
+                  <Image source={subjectIconSource(subjectName)} style={styles.subjectIconFallback} />
                 </View>
               }
             />

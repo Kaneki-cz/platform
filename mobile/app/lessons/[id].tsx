@@ -102,6 +102,12 @@ export default function LessonScreen() {
   const [showEnrollment, setShowEnrollment] = useState(false);
   const lastSentPercent = useRef(0);
   const videoRef = useRef<LessonVideoPlayerHandle>(null);
+  // Diagnostic only (see the blank-screen-on-opening-a-lesson report) — was
+  // previously "if (!lesson) return null", which left NOTHING on screen
+  // while getLesson was in flight (or if it silently failed), making a slow
+  // request indistinguishable from a genuine crash. Now shows *something*
+  // either way, so a report can say which one it actually is.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // useFocusEffect (not useEffect) so re-opening a lesson (e.g. after an
   // instructor edits it) picks up fresh content without a full app reload.
@@ -115,6 +121,7 @@ export default function LessonScreen() {
       setResolvedVideoUrl(null);
       setEnrollmentStatus(null);
       setShowEnrollment(false);
+      setLoadError(null);
       getLesson(id)
         .then((l) => {
           setLesson(l);
@@ -124,7 +131,11 @@ export default function LessonScreen() {
             updateProgress(id, 100).catch(() => {});
           }
         })
-        .catch(() => {});
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.error('getLesson failed:', e);
+          setLoadError(e instanceof Error ? e.message : String(e));
+        });
       getLessonQuestions(id)
         .then(setQuestions)
         .catch(() => {});
@@ -238,7 +249,15 @@ export default function LessonScreen() {
     [activeQuiz],
   );
 
-  if (!lesson) return null;
+  if (!lesson) {
+    return (
+      <View style={[styles.container, styles.centerFill]}>
+        <Text style={loadError ? styles.loadErrorText : styles.loadingText}>
+          {loadError ? `Couldn't load this lecture: ${loadError}` : 'Loading…'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -304,6 +323,9 @@ export default function LessonScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  centerFill: { alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  loadingText: { color: colors.textMuted, fontSize: 14 },
+  loadErrorText: { color: colors.danger, fontSize: 14, textAlign: 'center' },
   title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.lg, color: colors.text },
   content: { fontSize: 16, lineHeight: 24, color: colors.text },
   viewsMeta: { fontSize: 12, color: colors.textFaint, marginTop: 6, textAlign: 'right' },
