@@ -12,6 +12,18 @@ Kept deliberately dependency-light: openpyxl only (already a very common,
 pure-Python library — no native/OS dependency, so this has zero effect on
 the mobile app or the EAS build pipeline described in the project's
 deploy-process skill).
+
+COLOR GOTCHA (the reason every color below is an 8-digit "FFrrggbb", never
+a bare 6-digit "rrggbb"): openpyxl's Color type silently zero-pads a plain
+6-digit hex with "00" alpha (fully transparent) instead of "FF" (opaque) —
+confirmed directly against the written XML. Excel desktop mostly ignores
+cell-fill alpha and renders the RGB anyway, which is why this looked fine
+in a quick desktop check; other spreadsheet apps (WPS among them, going by
+a screenshot from an actual phone) DO honor that alpha byte, so every fill
+came out as a transparent wash tinted by whatever the app's own theme
+accent color underneath happened to be — not the navy/green/red this file
+intended. Always spell out the alpha explicitly, here and in any future
+edit to this palette.
 """
 from __future__ import annotations
 
@@ -24,16 +36,44 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.schemas.course import StudentExamGradeRow
 
-# --- palette -----------------------------------------------------------
-HEADER_FILL = PatternFill("solid", fgColor="1F3864")   # dark navy
-HEADER_FONT = Font(color="FFFFFF", bold=True, size=11, name="Calibri")
-ROW_ALT_FILL = PatternFill("solid", fgColor="F2F5FA")   # light zebra stripe
-PASS_FILL = PatternFill("solid", fgColor="E2F0D9")   # soft green
-PASS_FONT = Font(color="2E7D32", bold=True)
-FAIL_FILL = PatternFill("solid", fgColor="FDE7E9")   # soft red
-FAIL_FONT = Font(color="C62828", bold=True)
-THIN = Side(style="thin", color="D9D9D9")
+
+def _solid(hex6: str) -> PatternFill:
+    """A fully-opaque solid fill — see the file-level COLOR GOTCHA comment.
+    `hex6` is a plain "rrggbb" string; this is the only place "FF" (opaque
+    alpha) gets prepended, and fgColor/bgColor are both set to the same
+    value since a couple of non-Excel renderers apply a "solid" pattern's
+    bgColor instead of its fgColor."""
+    argb = f"FF{hex6}"
+    return PatternFill(patternType="solid", fgColor=argb, bgColor=argb)
+
+
+def _rgb_font(hex6: str, **kwargs) -> Font:
+    return Font(color=f"FF{hex6}", **kwargs)
+
+
+# --- palette -------------------------------------------------------------
+# Echoes the mobile app's own cyan/violet brand (see mobile/constants/
+# theme.ts) instead of a generic gray/navy spreadsheet look, adapted for a
+# light (not dark) spreadsheet surface — a solid dark fill reading white
+# text everywhere would be exhausting to scroll through in Excel/WPS.
+HEADER_FILL = _solid("0E7490")  # deep cyan-teal — echoes colors.primary, dark enough for white text
+HEADER_FONT = _rgb_font("FFFFFF", bold=True, size=11, name="Calibri")
+TITLE_FONT = _rgb_font("0E7490", bold=True, size=13, name="Calibri")
+ROW_ALT_FILL = _solid("ECFEFF")  # faint cyan tint zebra stripe (cyan-50)
+PASS_FILL = _solid("DCFCE7")  # soft green — echoes colors.success
+PASS_FONT = _rgb_font("15803D", bold=True)
+FAIL_FILL = _solid("FEE2E2")  # soft red — echoes colors.danger
+FAIL_FONT = _rgb_font("B91C1C", bold=True)
+NAME_FONT = _rgb_font("111827", bold=True)
+BODY_FONT = _rgb_font("374151")
+THIN = Side(style="thin", color="FFD8DEE9")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+HEADER_BORDER = Border(
+    left=Side(style="thin", color="FF0E7490"),
+    right=Side(style="thin", color="FF0E7490"),
+    top=Side(style="thin", color="FF0E7490"),
+    bottom=Side(style="medium", color="FF0E7490"),
+)
 
 # order matters — this is the literal column order in the sheet
 COLUMNS = [
@@ -79,9 +119,9 @@ def _style_header(ws: Worksheet) -> None:
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = BORDER
+        cell.border = HEADER_BORDER
         ws.column_dimensions[get_column_letter(col_idx)].width = width
-    ws.row_dimensions[1].height = 26
+    ws.row_dimensions[1].height = 28
 
 
 def _write_sheet(ws: Worksheet, rows: list[StudentExamGradeRow]) -> None:
@@ -107,8 +147,10 @@ def _write_sheet(ws: Worksheet, rows: list[StudentExamGradeRow]) -> None:
             cell = ws.cell(row=i, column=col_idx, value=value)
             cell.border = BORDER
             cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.font = NAME_FONT if col_idx == 1 else BODY_FONT
             if base_fill is not None:
                 cell.fill = base_fill
+        ws.row_dimensions[i].height = 20
 
         status_cell = ws.cell(row=i, column=8)
         if row.passed:
