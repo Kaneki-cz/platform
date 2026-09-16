@@ -40,10 +40,15 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_instructor_or_admin
-from app.models.user import User
-from app.services import b2_storage
+from app.db.database import get_db
+from app.models.lesson import Lesson
+from app.models.lesson_access_code import LessonAccessCode
+from app.models.progress import LessonProgress
+from app.models.user import User, UserRole
+from app.services import b2_storage, exam_gate
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
 
@@ -166,17 +171,75 @@ async def upload_video(
 @router.get("/video-url")
 async def get_video_signed_url(
     key: str = Query(..., description="The object key portion of a b2:<key> video_url"),
-    _current_user: User = Depends(get_current_user),
+    lesson_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Required for student callers — the lesson this video belongs to. "
+            "Used to re-verify the student still has access (exam gate, code "
+            "gate) before issuing a signed URL, so a student who saved a key "
+            "from a previous view can't bypass access controls. "
+            "Instructors and admins are not gated and may omit this."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Exchanges a B2 object key for a short-lived signed playback URL.
 
-    Any logged-in user (student, instructor, or admin) may call this — the
-    same trust level the old public /media/videos/<uuid>.mp4 links had
-    (unguessable filename, no per-lesson access check). Called by the
-    mobile app's resolveVideoUrl right before a lecture's video starts
-    playing, never stored — a fresh URL is requested every time a lesson
-    opens.
+    Students must supply lesson_id so the gate checks (exam gate, code
+    gate) run on every URL request — not just when the lesson screen first
+    loads. Without this check a student who saved the object key from a
+    previous legitimate view could call this endpoint directly and bypass
+    any gate that was set after the fact, or that they unlocked momentarily.
+
+    Instructors and admins are never gated and may omit lesson_id (they
+    need to preview content while authoring, without being blocked).
     """
+    if current_user.role == UserRole.student:
+        if lesson_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="lesson_id is required for student callers",
+            )
+
+        lesson = db.get(Lesson, lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+
+        # Exam gate — same check as GET /lessons/{id}.
+        if exam_gate.is_locked_by_exam(
+            db, current_user.id, lesson.course_id, lesson.order_index, lesson.exempt_from_exam_gate
+        ):
+            raise HTTPException(status_code=403, detail="This lesson is locked by an exam gate")
+
+        # Code gate — same check as GET /lessons/{id}.
+        requires_code = (
+            db.query(LessonAccessCode.id)
+            .filter(LessonAccessCode.lesson_id == lesson.id)
+            .first()
+            is not None
+        )
+        if requires_code:
+            code_unlocked = (
+                db.query(LessonAccessCode.id)
+                .filter(
+                    LessonAccessCode.lesson_id == lesson.id,
+                    LessonAccessCode.redeemed_by_user_id == current_user.id,
+                )
+                .first()
+                is not None
+            )
+            if not code_unlocked:
+                raise HTTPException(status_code=403, detail="This lesson requires an access code")
+
+        # Note: view-limit is intentionally NOT re-checked here. The view
+        # counter is incremented in GET /lessons/{id} when the lesson screen
+        # loads, and this endpoint is called right after — checking >= here
+        # would falsely block the student who just used their last allowed
+        # view (count == views_allowed after the increment).  The exam gate
+        # and code gate above are the real security controls; view limits are
+        # a soft content-access feature enforced by the lesson endpoint.
+
     if not b2_storage.b2_configured():
         raise HTTPException(status_code=503, detail="Video storage is not configured on this server.")
     try:
