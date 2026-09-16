@@ -1,10 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { ApiError, getMyStudentCode } from '@/lib/api';
 import { colors, gradientBrand, radius, spacing } from '@/constants/theme';
 
 const STRINGS = {
@@ -18,6 +20,9 @@ const STRINGS = {
     language: 'اللغة',
     languageArabic: 'العربية',
     languageEnglish: 'English',
+    myCode: 'كود الحضور الخاص بي',
+    myCodeHint: 'اعرض هذا الكود للمدرس ليمسحه ويسجل حضورك',
+    myCodeError: 'تعذر تحميل الكود، حاول مرة أخرى',
   },
   en: {
     student: 'Student',
@@ -29,8 +34,55 @@ const STRINGS = {
     language: 'Language',
     languageArabic: 'العربية',
     languageEnglish: 'English',
+    myCode: 'My attendance code',
+    myCodeHint: 'Show this to your teacher to scan and mark you present',
+    myCodeError: "Couldn't load your code, try again",
   },
 };
+
+/** Student-only "my QR code" card — fetches/lazily-creates this student's
+ * permanent attendance code (see lib/api.ts's getMyStudentCode) and renders
+ * it as a scannable QR, for a teacher/admin to scan from the group
+ * attendance scanner (app/admin/attendance/[groupId].tsx). Always wrapped in
+ * a plain white box regardless of the app's dark theme — a QR rendered on a
+ * dark background doesn't scan reliably. */
+function MyAttendanceCode({ t }: { t: (typeof STRINGS)['ar'] }) {
+  const [code, setCode] = React.useState<string | null>(null);
+  const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getMyStudentCode()
+      .then((res) => {
+        if (!cancelled) setCode(res.code);
+      })
+      .catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error('getMyStudentCode failed:', e instanceof ApiError ? { status: e.status, message: e.message } : e);
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <View style={styles.codeCard}>
+      <Text style={styles.codeCardTitle}>{t.myCode}</Text>
+      <View style={styles.qrBox}>
+        {code ? (
+          <QRCode value={code} size={148} backgroundColor="#ffffff" color="#0B0F19" />
+        ) : error ? (
+          <Text style={styles.codeError}>{t.myCodeError}</Text>
+        ) : (
+          <ActivityIndicator color={colors.primary} />
+        )}
+      </View>
+      {code ? <Text style={styles.codeText}>{code}</Text> : null}
+      <Text style={styles.codeHint}>{t.myCodeHint}</Text>
+    </View>
+  );
+}
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -54,6 +106,8 @@ export default function ProfileScreen() {
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{user?.plan === 'pro' ? t.proPlan : t.freePlan}</Text>
       </View>
+
+      {user?.role === 'student' ? <MyAttendanceCode t={t} /> : null}
 
       <View style={styles.languageRow}>
         <Text style={styles.languageLabel}>{t.language}</Text>
@@ -123,6 +177,28 @@ const styles = StyleSheet.create({
   email: { color: colors.textMuted, marginTop: 4 },
   badge: { backgroundColor: colors.accent + '1F', borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 6, marginTop: spacing.md },
   badgeText: { color: colors.accentDark, fontWeight: '600' },
+  codeCard: {
+    marginTop: spacing.lg,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
+  codeCardTitle: { color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: spacing.md },
+  qrBox: {
+    width: 172,
+    height: 172,
+    borderRadius: radius.md,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  codeError: { color: colors.danger, textAlign: 'center', paddingHorizontal: spacing.md, fontSize: 12 },
+  codeText: { color: colors.text, fontWeight: '700', fontSize: 18, letterSpacing: 2, marginTop: spacing.md },
+  codeHint: { color: colors.textMuted, fontSize: 12, marginTop: spacing.xs, textAlign: 'center' },
   languageRow: {
     marginTop: 28,
     alignSelf: 'stretch',

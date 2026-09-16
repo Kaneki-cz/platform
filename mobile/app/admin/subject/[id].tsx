@@ -566,9 +566,22 @@ export default function ManageSubjectScreen() {
               {teacherGroups.map((g) => (
                 <View key={g.id} style={styles.groupRow}>
                   <Text style={styles.groupName}>{g.name}</Text>
-                  <Pressable onPress={() => onDeleteGroup(g.id, g.name)} hitSlop={8}>
-                    <Text style={styles.removeText}>Delete</Text>
-                  </Pressable>
+                  <View style={styles.groupRowActions}>
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: '/admin/attendance/[groupId]',
+                          params: { groupId: g.id, teacherId: teacherEditingId as string, groupName: g.name },
+                        })
+                      }
+                      hitSlop={8}
+                    >
+                      <Text style={styles.scanLinkText}>📷 Scan attendance</Text>
+                    </Pressable>
+                    <Pressable onPress={() => onDeleteGroup(g.id, g.name)} hitSlop={8}>
+                      <Text style={styles.removeText}>Delete</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
@@ -896,6 +909,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   groupName: { fontSize: 14, color: colors.text, fontWeight: '500', flex: 1 },
+  groupRowActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  scanLinkText: { color: colors.primary, fontWeight: '600', fontSize: 12 },
   groupInputRow: {
     flexDirection: 'row',
     alignItems: 'center',

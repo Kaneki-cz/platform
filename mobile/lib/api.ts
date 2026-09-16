@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from './config';
 import type {
   AskResponse,
+  AttendanceScanResult,
   ChatMessage,
   Course,
   CourseCreateInput,
@@ -12,6 +13,7 @@ import type {
   CourseUpdateInput,
   EnrollmentStatus,
   EnrollmentSubmit,
+  GroupAttendanceData,
   ExamAdmin,
   ExamAnswerSubmit,
   ExamAttemptsData,
@@ -34,6 +36,7 @@ import type {
   QuestionAttemptResult,
   QuestionCreateInput,
   QuestionUpdateInput,
+  StudentCode,
   Subject,
   SubjectDetail,
   Teacher,
@@ -882,5 +885,43 @@ export function adminUpdateUserEnrollment(
       method: 'PUT',
       body: JSON.stringify({ group_id: groupId }),
     },
+  );
+}
+
+// ── Attendance (per-student QR code + group scanning) ────────────────────────
+// See lib/types.ts's StudentCode/AttendanceScanResult/GroupAttendanceData for
+// the full picture and backend/app/api/routes/attendance.py.
+
+/** Student. This student's own permanent attendance code, generating and
+ * persisting one server-side the first time this is ever called for their
+ * account — see app/(tabs)/profile.tsx, which renders it as a QR. */
+export function getMyStudentCode(): Promise<StudentCode> {
+  return request<StudentCode>('/api/v1/students/me/code');
+}
+
+/** Instructor/admin. Marks the student owning `code` present in `groupId`
+ * for today — see app/admin/attendance/[groupId].tsx. Re-scanning the same
+ * student in the same group/day is a harmless no-op
+ * (already_marked: true on the result), never an error. Throws a 400
+ * ApiError if the code doesn't belong to a student assigned to this group,
+ * or a 404 if the code isn't valid at all. */
+export function scanAttendance(code: string, groupId: string): Promise<AttendanceScanResult> {
+  return request<AttendanceScanResult>('/api/v1/attendance/scan', {
+    method: 'POST',
+    body: JSON.stringify({ code, group_id: groupId }),
+  });
+}
+
+/** Instructor/admin. Who's been scanned present in this group on a given day
+ * (today by default, pass an explicit `YYYY-MM-DD` for another day) — the
+ * scanner screen's live present-list. */
+export function getGroupAttendance(
+  teacherId: string,
+  groupId: string,
+  sessionDate?: string,
+): Promise<GroupAttendanceData> {
+  const params = sessionDate ? `?session_date=${sessionDate}` : '';
+  return request<GroupAttendanceData>(
+    `/api/v1/teachers/${teacherId}/groups/${groupId}/attendance${params}`,
   );
 }

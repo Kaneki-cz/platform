@@ -39,6 +39,12 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "يحتاج التطبيق الوصول للكاميرا عشان المدرس يمسح كود الحضور بتاع الطالب."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

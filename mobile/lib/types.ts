@@ -200,9 +200,10 @@ export interface TeacherDashboard {
 }
 
 // One row in the Teacher Dashboard's cross-chapter grades matrix — see
-// GET /api/v1/courses/mine/grades-matrix. student_code is always null for
-// now (the per-student QR/code feature hasn't been built yet); kept here so
-// the table already has the column ready.
+// GET /api/v1/courses/mine/grades-matrix. student_code is null until that
+// student has opened their own QR-code screen at least once (see
+// getMyStudentCode below) — never backfilled in bulk, so an inactive
+// student simply shows nothing in that column.
 export interface StudentExamGradeRow {
   user_id: string;
   full_name: string | null;
@@ -322,6 +323,53 @@ export interface EnrollmentSubmit {
   full_name_ar: string;
   grade: GradeLevel;
   group_id: string | null;
+}
+
+// ── Attendance (per-student QR code + group scanning) ────────────────────────
+// See backend/app/api/routes/attendance.py. A student's code is permanent
+// (unlike LessonAccessCode's single-use codes) and lazily generated the
+// first time GET /api/v1/students/me/code is called for their account —
+// see app/(tabs)/profile.tsx, which renders it as a QR. A teacher/admin then
+// scans it from a specific TeacherGroup's scanner screen
+// (app/admin/attendance/[groupId].tsx) to mark that student present for
+// today's real-life session — entirely separate from LessonProgress
+// (recorded-video watch tracking).
+
+/** This student's own permanent attendance code — see GET
+ * /api/v1/students/me/code. */
+export interface StudentCode {
+  code: string;
+}
+
+/** What the scanner screen gets back right after POST
+ * /api/v1/attendance/scan — enough to flash a name + already_marked state
+ * without a second round trip. already_marked=true is a harmless no-op (the
+ * same student was already scanned in this group today), never an error. */
+export interface AttendanceScanResult {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  group_id: string;
+  group_name: string;
+  session_date: string;
+  already_marked: boolean;
+}
+
+/** One present student in GroupAttendanceData below. */
+export interface AttendanceRow {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  scanned_at: string;
+}
+
+/** GET /api/v1/teachers/{teacherId}/groups/{groupId}/attendance — who's been
+ * scanned present in this group on a given day (today by default). */
+export interface GroupAttendanceData {
+  group_id: string;
+  group_name: string;
+  session_date: string;
+  present: AttendanceRow[];
 }
 
 // One student's view-count standing on one max_views-capped lesson — see
