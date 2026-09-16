@@ -7,7 +7,8 @@ import {
 } from '@expo-google-fonts/stix-two-text';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect } from 'react';
+import * as Updates from 'expo-updates';
+import React, { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Text, TextInput } from 'react-native';
@@ -81,6 +82,35 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  // On every cold start, check whether a new OTA update is waiting.
+  // If one is found: download it and reload the JS bundle immediately —
+  // all while the native splash screen is still showing, so the student
+  // never sees a mid-session interruption. `reloadAsync` never returns
+  // (it restarts the runtime), so `setUpdateChecked(true)` only runs
+  // when there is NO update available or when the check itself fails
+  // (network error, dev mode, etc.) — in all those cases we just
+  // continue with the currently-installed bundle.
+  const [updateChecked, setUpdateChecked] = useState(false);
+  useEffect(() => {
+    if (__DEV__) {
+      // expo-updates doesn't run in the Metro dev server — skip.
+      setUpdateChecked(true);
+      return;
+    }
+    (async () => {
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync(); // restarts the app; never reaches below
+        }
+      } catch {
+        // Network error or updates not configured — carry on with current bundle.
+      }
+      setUpdateChecked(true);
+    })();
+  }, []);
+
   const [fontsLoaded] = useFonts({
     Cairo_400Regular,
     Cairo_500Medium,
@@ -109,7 +139,9 @@ export default function RootLayout() {
   // partially rendering in the system default font, then flashing to
   // Cairo) until the font files are ready — this only ever blocks for a
   // moment on first cold start, since expo-font caches the loaded fonts.
-  if (!fontsLoaded) {
+  // Hold rendering until both the update check AND fonts are ready.
+  // If an update was found, reloadAsync already fired and we never reach here.
+  if (!updateChecked || !fontsLoaded) {
     return null;
   }
 
