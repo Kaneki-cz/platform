@@ -50,6 +50,25 @@ def _teacher_out(db: Session, teacher: TeacherProfile) -> TeacherOut:
     )
 
 
+@router.get("/teachers/mine", response_model=TeacherOut)
+def get_my_teacher_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TeacherOut:
+    """Returns the teacher card linked to the signed-in instructor's own
+    account (see TeacherProfile.user_id / link_teacher_account above) — used
+    by the mobile app's self-service "My groups" screen so an instructor can
+    reach their own teacher_id for the groups + attendance endpoints
+    (app/api/routes/enrollment.py, attendance.py — both already permit an
+    instructor to manage their own teacher_id's data) without needing to
+    already have a chapter assigned (myManagedCourses can be empty for a
+    freshly-linked instructor)."""
+    teacher = db.query(TeacherProfile).filter(TeacherProfile.user_id == current_user.id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Your account isn't linked to a teacher profile yet — ask an admin to link it.")
+    return _teacher_out(db, teacher)
+
+
 @router.get("/subjects/{subject_id}/teachers", response_model=list[TeacherOut])
 def list_teachers(
     subject_id: uuid.UUID,
