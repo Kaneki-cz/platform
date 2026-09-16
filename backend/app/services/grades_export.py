@@ -81,6 +81,13 @@ COLUMNS = [
     ("الطالب", 22),
     ("الإيميل", 26),
     ("الكود", 12),
+    # The chapter's own assigned grade level (Course.grade_level — one of
+    # the 4 fixed GRADE_LEVELS strings) — added because a full "كل الصفوف"
+    # export mixes chapters from every grade level into the same sheet set,
+    # and "الفصل" alone (a chapter's TITLE) doesn't tell you which grade
+    # that chapter belongs to. "—" for a chapter that was never filed
+    # under one. See StudentExamGradeRow.course_grade_level.
+    ("الصف", 24),
     ("الفصل", 22),
     ("الامتحان", 22),
     ("الدرجة", 12),
@@ -90,6 +97,11 @@ COLUMNS = [
     ("متوسط الفصل", 14),
     ("تاريخ التسليم", 18),
 ]
+
+# 1-indexed column position of "الحالة" above — kept as a named constant
+# rather than a magic 8/9 in _write_sheet, since inserting/removing a
+# column above (like "الصف" was) shifts it and is easy to forget.
+STATUS_COL = next(i for i, (label, _) in enumerate(COLUMNS, start=1) if label == "الحالة")
 
 _INVALID_SHEET_CHARS = re.compile(r"[:\\/?*\[\]]")
 
@@ -134,6 +146,7 @@ def _write_sheet(ws: Worksheet, rows: list[StudentExamGradeRow]) -> None:
             row.full_name or "—",
             row.email,
             row.student_code or "—",
+            row.course_grade_level or "—",
             row.course_title,
             row.exam_title,
             f"{row.correct_count}/{row.question_count}" if row.question_count else "—",
@@ -153,7 +166,7 @@ def _write_sheet(ws: Worksheet, rows: list[StudentExamGradeRow]) -> None:
                 cell.fill = base_fill
         ws.row_dimensions[i].height = 20
 
-        status_cell = ws.cell(row=i, column=8)
+        status_cell = ws.cell(row=i, column=STATUS_COL)
         if row.passed:
             status_cell.fill = PASS_FILL
             status_cell.font = PASS_FONT
