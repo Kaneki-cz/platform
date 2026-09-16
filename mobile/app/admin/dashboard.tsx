@@ -282,12 +282,27 @@ function KpiTile({
   );
 }
 
+// Small identity avatar reused on every flag row — same pattern adopted on
+// the per-chapter Student Report screen (app/admin/course/[id]/report.tsx)
+// during the 2026 visual redesign pass, so a flag row reads as "a person"
+// rather than just two lines of text next to a number.
+function FlagAvatar({ name }: { name: string }) {
+  const initial = (name.trim().slice(0, 1) || '?').toUpperCase();
+  return (
+    <View style={styles.flagAvatar}>
+      <Text style={styles.flagAvatarText}>{initial}</Text>
+    </View>
+  );
+}
+
 function ExamSpeedFlagRow({ flag }: { flag: ExamSpeedFlag }) {
+  const displayName = flag.full_name?.trim() || flag.email;
   return (
     <View style={styles.flagRow}>
+      <FlagAvatar name={displayName} />
       <View style={{ flex: 1 }}>
         <Text style={styles.flagName} numberOfLines={1}>
-          {flag.full_name?.trim() || flag.email}
+          {displayName}
         </Text>
         <Text style={styles.flagMeta} numberOfLines={1}>
           {flag.exam_title} · {flag.course_title}
@@ -302,11 +317,13 @@ function ExamSpeedFlagRow({ flag }: { flag: ExamSpeedFlag }) {
 }
 
 function VideoSkipFlagRow({ flag }: { flag: VideoSkipFlag }) {
+  const displayName = flag.full_name?.trim() || flag.email;
   return (
     <View style={styles.flagRow}>
+      <FlagAvatar name={displayName} />
       <View style={{ flex: 1 }}>
         <Text style={styles.flagName} numberOfLines={1}>
-          {flag.full_name?.trim() || flag.email}
+          {displayName}
         </Text>
         <Text style={styles.flagMeta} numberOfLines={1}>
           {flag.lesson_title} · {flag.course_title}
@@ -382,6 +399,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 2.5,
     borderRadius: radius.lg,
     padding: 14,
+    ...cardShadow,
   },
   kpiIconWrap: {
     width: 26,
@@ -402,6 +420,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 16,
     paddingBottom: 8,
+    ...cardShadow,
   },
   perfRow: { marginBottom: 14 },
   perfRowLast: { marginBottom: 6 },
@@ -436,6 +455,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginEnd: 10,
+    ...cardShadow,
   },
   chapCardPressed: { opacity: 0.85 },
   chapCover: { height: 78, alignItems: 'center', justifyContent: 'center' },
@@ -473,6 +493,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.lg,
     padding: 16,
+    ...cardShadow,
   },
   watchTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   watchIconWrap: {
@@ -510,6 +531,7 @@ const styles = StyleSheet.create({
     borderColor: colors.danger + '33',
     borderRadius: radius.lg,
     padding: 14,
+    ...cardShadow,
   },
   flagHint: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: 10, textAlign: 'right' },
   flagRow: {
@@ -520,6 +542,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  flagAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.danger + '1f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flagAvatarText: { fontSize: 12, color: colors.danger, fontFamily: fonts.bold },
   flagName: { fontSize: 13, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
   flagMeta: { fontSize: 11, color: colors.textFaint, marginTop: 2, textAlign: 'right' },
   flagStat: { alignItems: 'flex-end' },

@@ -3,7 +3,7 @@ import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getCourseStudentReport, getExamAttempts, listCourseExams } from '@/lib/api';
-import { colors, fonts, radius, spacing } from '@/constants/theme';
+import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import { icons } from '@/lib/icons';
 import type { CourseStudentReport, ExamAdmin, ExamAttemptRow, StudentReportRow } from '@/lib/types';
 
@@ -18,6 +18,39 @@ function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function initialOf(name: string): string {
+  const trimmed = name.trim();
+  return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';
+}
+
+// Small colored initial-circle used on every attempt/student row across this
+// screen — same visual idea as the teacher's own avatar on the Dashboard
+// header, reused here so a row reads as "a person" at a glance instead of
+// just two lines of text. Color is purely an identity accent (never status)
+// so it stays subtle — status/warning is still carried by the score chip and
+// the fast-attempt tag alone, per the redesign notes below.
+function Avatar({ name, color }: { name: string; color: string }) {
+  return (
+    <View style={[styles.avatar, { backgroundColor: color + '24' }]}>
+      <Text style={[styles.avatarText, { color }]}>{initialOf(name)}</Text>
+    </View>
+  );
+}
+
+// Section header — colored dot + label, identical language to the Teacher
+// Dashboard's own SectionLabel (app/admin/dashboard.tsx). Previously this
+// screen used a plain bold <Text>, which made it feel like a different
+// product from the Dashboard it's one tap away from; this ties the two
+// together.
+function SectionLabel({ label, color }: { label: string; color: string }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <View style={[styles.sectionDot, { backgroundColor: color }]} />
+      <Text style={styles.sectionLabel}>{label}</Text>
+    </View>
+  );
 }
 
 interface ExamWithAttempts {
@@ -38,10 +71,19 @@ interface ExamWithAttempts {
  *     the chapter at once so it's visible right here without having to dig
  *     into Admin > chapter > Exams > (exam) > Attempts.
  *  2. The original "who hasn't watched / who hasn't taken the exam"
- *     activity report, unchanged. There's no fixed class roster in this
- *     app (any student can open any chapter), so that list is exactly the
- *     students GET /api/v1/courses/{id}/student-report found real activity
- *     for.
+ *     activity report, unchanged in substance. There's no fixed class
+ *     roster in this app (any student can open any chapter), so that list
+ *     is exactly the students GET /api/v1/courses/{id}/student-report found
+ *     real activity for.
+ *
+ * 2026 visual redesign pass (teacher asked to improve this screen's look,
+ * specifically calling out the old full-row maroon wash on fast/flagged
+ * attempts as unpleasant): rows no longer tint their whole background by
+ * status. A flagged attempt now gets a thin colored left border + a small
+ * pill tag (same pattern as the standalone Attempts screen's `fastTag`),
+ * scores read as small rounded chips instead of bare colored text, and both
+ * sections got avatar circles + the Dashboard's colored-dot section header
+ * so this screen visually matches the one it's opened from.
  */
 export default function CourseStudentReportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -101,10 +143,13 @@ export default function CourseStudentReportScreen() {
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.xl, paddingBottom: 40 }}>
       {examsWithAttempts.length > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>📋 الدرجات</Text>
+          <SectionLabel color={colors.primary} label="📋 الدرجات" />
           {examsWithAttempts.map(({ exam, attempts }) => (
             <View key={exam.id} style={styles.examBlock}>
               <View style={styles.examHeaderRow}>
+                <View style={styles.examIconWrap}>
+                  <Image source={icons.barChart} style={[styles.examIcon, { tintColor: colors.primary }]} />
+                </View>
                 <Text style={styles.examTitle} numberOfLines={1}>
                   {exam.title}
                 </Text>
@@ -116,19 +161,28 @@ export default function CourseStudentReportScreen() {
                 <Text style={styles.examEmpty}>محدش امتحن لسه.</Text>
               ) : (
                 attempts.map((a) => (
-                  <View key={a.attempt_id} style={[styles.attemptRow, a.is_fast && styles.attemptRowFast]}>
+                  <View key={a.attempt_id} style={[styles.attemptRow, a.is_fast && styles.attemptRowFlagged]}>
+                    <Avatar name={a.full_name?.trim() || a.email} color={colors.violet} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.attemptName} numberOfLines={1}>
                         {a.full_name?.trim() || a.email}
                       </Text>
-                      <Text style={styles.attemptMeta}>
-                        ⏱ {formatDuration(a.duration_seconds)} · {formatDateTime(a.submitted_at)}
-                        {a.is_fast ? ' · ⚠ سريع بشكل مريب' : ''}
+                      <View style={styles.attemptMetaRow}>
+                        <Text style={styles.attemptMeta}>
+                          ⏱ {formatDuration(a.duration_seconds)} · {formatDateTime(a.submitted_at)}
+                        </Text>
+                        {a.is_fast ? (
+                          <View style={styles.fastTag}>
+                            <Text style={styles.fastTagText}>⚠ سريع بشكل مريب</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={[styles.scoreChip, a.passed ? styles.scoreChipPassed : styles.scoreChipFailed]}>
+                      <Text style={[styles.scoreChipText, a.passed ? styles.scorePassed : styles.scoreFailed]}>
+                        {a.score_percent != null ? `${Math.round(a.score_percent)}%` : '—'}
                       </Text>
                     </View>
-                    <Text style={[styles.attemptScore, a.passed ? styles.attemptScorePassed : styles.attemptScoreFailed]}>
-                      {a.score_percent != null ? `${Math.round(a.score_percent)}%` : '—'}
-                    </Text>
                   </View>
                 ))
               )}
@@ -139,7 +193,7 @@ export default function CourseStudentReportScreen() {
 
       {hasActivity && report ? (
         <>
-          <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>👁 نشاط الطلاب</Text>
+          <SectionLabel color={colors.textFaint} label="👁 نشاط الطلاب" />
           <Text style={styles.summary}>
             {report.students.length} طالب تفاعل مع "{report.course_title}" · {report.lectures_count} محاضرات
             {report.exams_count ? ` · ${report.exams_count} امتحان` : ''}
@@ -164,12 +218,14 @@ function StudentRow({
 }) {
   const lessonsGap = student.missing_lesson_titles.length;
   const examsGap = student.missing_exam_titles.length;
+  const displayName = student.full_name?.trim() || student.email;
   return (
     <View style={styles.row}>
       <View style={styles.rowTop}>
+        <Avatar name={displayName} color={colors.primary} />
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>
-            {student.full_name?.trim() || student.email}
+            {displayName}
           </Text>
           <Text style={styles.email} numberOfLines={1}>
             {student.email}
@@ -223,8 +279,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centered: { alignItems: 'center', justifyContent: 'center' },
   empty: { color: colors.textFaint, textAlign: 'center', lineHeight: 20 },
-  sectionTitle: { fontSize: 15, fontFamily: fonts.bold, color: colors.text, marginBottom: 10, textAlign: 'right' },
+
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 10 },
+  sectionDot: { width: 6, height: 6, borderRadius: 2 },
+  sectionLabel: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.semiBold, letterSpacing: 0.5 },
+
   summary: { fontSize: 12, color: colors.textFaint, fontFamily: fonts.medium, marginBottom: 14, textAlign: 'right' },
+
+  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 13, fontFamily: fonts.bold },
 
   examBlock: {
     backgroundColor: colors.surface,
@@ -233,25 +296,56 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 14,
     marginBottom: 12,
+    ...cardShadow,
   },
-  examHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  examHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  examIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.primary + '1f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  examIcon: { width: 14, height: 14 },
   examTitle: { fontSize: 14, color: colors.text, fontFamily: fonts.bold, flex: 1, textAlign: 'right' },
   examMeta: { fontSize: 11, color: colors.textFaint, marginStart: 8 },
   examEmpty: { fontSize: 12, color: colors.textFaint, textAlign: 'right' },
+
   attemptRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  attemptRowFast: { backgroundColor: colors.dangerSurface },
+  // Flagged attempts no longer wash the whole row red — just a thin
+  // identity border on the leading edge, echoed by the small fastTag pill
+  // in the meta line. Much closer to a "nudge" than an alarm.
+  attemptRowFlagged: { borderStartWidth: 3, borderStartColor: colors.danger },
   attemptName: { fontSize: 13, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
-  attemptMeta: { fontSize: 10.5, color: colors.textFaint, marginTop: 2, textAlign: 'right' },
-  attemptScore: { fontSize: 15, fontFamily: fonts.bold },
-  attemptScorePassed: { color: colors.success },
-  attemptScoreFailed: { color: colors.danger },
+  attemptMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3 },
+  attemptMeta: { fontSize: 10.5, color: colors.textFaint, textAlign: 'right' },
+  fastTag: {
+    backgroundColor: colors.dangerSurface,
+    borderRadius: radius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  fastTagText: { fontSize: 9.5, color: colors.danger, fontFamily: fonts.bold },
+
+  scoreChip: {
+    borderRadius: radius.pill,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+  },
+  scoreChipPassed: { backgroundColor: colors.success + '1f' },
+  scoreChipFailed: { backgroundColor: colors.danger + '1f' },
+  scoreChipText: { fontSize: 14, fontFamily: fonts.bold },
+  scorePassed: { color: colors.success },
+  scoreFailed: { color: colors.danger },
 
   row: {
     backgroundColor: colors.surface,
@@ -260,6 +354,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 14,
     marginBottom: 10,
+    ...cardShadow,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   name: { fontSize: 14, color: colors.text, fontFamily: fonts.bold, textAlign: 'right' },
