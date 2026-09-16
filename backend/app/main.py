@@ -17,11 +17,15 @@ app = FastAPI(title=settings.APP_NAME)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# In production, restrict this to the mobile app's actual origin(s)/scheme.
+# allow_origins=["*"] is intentional: this is a mobile-first API and CORS
+# only applies to browser clients, not to the React Native app.
+# allow_credentials is NOT set — the app uses JWT Bearer tokens in the
+# Authorization header, not cookies, so credentials mode is unnecessary.
+# (The combination allow_origins="*" + allow_credentials=True is also
+# invalid per the CORS spec and rejected by browsers anyway.)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
