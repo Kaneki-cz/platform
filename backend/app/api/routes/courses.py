@@ -1,12 +1,21 @@
+import io
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import ensure_can_manage_course, get_current_user, require_admin, require_instructor_or_admin
+from app.api.deps import (
+    ensure_can_manage_course,
+    get_current_user,
+    get_export_user,
+    require_admin,
+    require_instructor_or_admin,
+)
+from app.core.security import create_export_token
 from app.db.database import get_db
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
@@ -35,6 +44,7 @@ from app.schemas.course import (
     VideoSkipFlagOut,
 )
 from app.services import b2_storage
+from app.services.grades_export import build_grades_workbook
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
@@ -480,9 +490,19 @@ def my_grades_matrix(
     current_user: User = Depends(require_instructor_or_admin),
 ) -> GradesMatrixOut:
     """Cross-chapter per-student-per-exam grades table for the Teacher
-    Dashboard — one row per completed exam attempt in a chapter this
-    teacher manages (same chapter scoping as my_dashboard/my_managed_courses
-    above), each carrying that student's own rolling averages for context:
+    Dashboard — see _grades_matrix_rows for exactly what each row carries.
+    Also backs the "download as Excel" flow (see grades_matrix_export_link/
+    grades_matrix_export below), which reuses the same row-building logic
+    so the on-screen table and the spreadsheet can never drift apart."""
+    return GradesMatrixOut(rows=_grades_matrix_rows(db, current_user))
+
+
+def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGradeRow]:
+    """Shared by GET /mine/grades-matrix (JSON, for the Dashboard table) and
+    the Excel export below. One row per completed exam attempt in a chapter
+    this teacher manages (same chapter scoping as my_dashboard/
+    my_managed_courses above), each carrying that student's own rolling
+    averages for context:
 
     - month_avg_score_percent: the student's average score across their
       completed attempts in the last MONTH_WINDOW_DAYS days, across every
@@ -493,8 +513,8 @@ def my_grades_matrix(
 
     student_code is always None for now — a placeholder column for the
     not-yet-built per-student QR/code feature (see the project's own
-    outstanding-work notes), added so the mobile table already has the
-    column ready and doesn't need another schema change once codes exist.
+    outstanding-work notes), added so the table already has the column
+    ready and doesn't need another schema change once codes exist.
     """
     query = db.query(Course)
     if current_user.role == UserRole.admin:
@@ -507,7 +527,7 @@ def my_grades_matrix(
     course_ids = [c.id for c in courses]
     course_titles = {c.id: c.title for c in courses}
     if not course_ids:
-        return GradesMatrixOut(rows=[])
+        return []
 
     question_counts = dict(
         db.query(Question.exam_id, func.count(Question.id))
@@ -527,7 +547,7 @@ def my_grades_matrix(
         .all()
     )
     if not attempt_rows:
-        return GradesMatrixOut(rows=[])
+        return []
 
     attempt_ids = [attempt.id for attempt, _, _ in attempt_rows]
     correct_counts = dict(
@@ -580,13 +600,52 @@ def my_grades_matrix(
                 correct_count=correct_counts.get(attempt.id, 0),
                 question_count=question_counts.get(exam.id, 0),
                 score_percent=attempt.score_percent,
+                passed=attempt.passed,
                 submitted_at=attempt.submitted_at,
                 month_avg_score_percent=month_avg_by_user.get(user.id),
                 chapter_avg_score_percent=chapter_avg_by_user_course.get((user.id, exam.course_id)),
             )
         )
 
-    return GradesMatrixOut(rows=rows)
+    return rows
+
+
+@router.get("/mine/grades-matrix/export-link")
+def grades_matrix_export_link(
+    current_user: User = Depends(require_instructor_or_admin),
+) -> dict:
+    """Step 1 of the "download as Excel" flow: mint a short-lived,
+    single-purpose token (see create_export_token in app/core/security.py)
+    while the app still has a normal Authorization header to call this
+    with. The mobile app then builds a plain https:// link with this token
+    as a query param and opens it in the system browser (Linking.openURL),
+    since a browser download can't attach that header itself — see
+    grades_matrix_export below, which is what actually accepts the token."""
+    token = create_export_token(str(current_user.id))
+    return {"token": token}
+
+
+@router.get("/mine/grades-matrix/export")
+def grades_matrix_export(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_export_user),
+) -> StreamingResponse:
+    """Step 2: the actual .xlsx download, opened directly in the system
+    browser rather than called from the app — so it's authenticated by the
+    short-lived query-param token from grades_matrix_export_link above
+    (get_export_user), not the normal Bearer header. Still enforces the
+    same instructor/admin gate as every other teacher-facing endpoint."""
+    if current_user.role not in (UserRole.instructor, UserRole.admin):
+        raise HTTPException(status_code=403, detail="Instructor access required")
+
+    rows = _grades_matrix_rows(db, current_user)
+    workbook_bytes = build_grades_workbook(rows)
+    filename = f"grades-{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(workbook_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{course_id}/student-report", response_model=CourseStudentReportOut)

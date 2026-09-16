@@ -31,3 +31,6 @@ google-api-python-client==2.200.0
 # resend-verification) — prevents brute-force password guessing and
 # signup spam. See app/core/limiter.py and app/main.py.
 slowapi==0.1.9
+# Styled .xlsx generation for the Teacher Dashboard's grades-matrix export
+# (see app/services/grades_export.py) — backend-only, no mobile-side impact.
+openpyxl==3.1.5

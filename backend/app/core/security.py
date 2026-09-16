@@ -41,3 +41,14 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
         return None
+
+
+def create_export_token(user_id: str) -> str:
+    """Short-lived, single-purpose token for a download link opened in the
+    system browser (see GET .../grades-matrix/export) — NOT a session token:
+    5 minutes only, and only ever accepted by that one endpoint (see
+    get_export_user in app/api/deps.py), so it's safe to sit briefly in a
+    URL/browser history even though the normal session JWT never should."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    to_encode = {"sub": user_id, "exp": expire, "purpose": "grades_export"}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

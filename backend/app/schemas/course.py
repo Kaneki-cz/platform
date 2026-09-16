@@ -272,6 +272,10 @@ class StudentExamGradeRow(BaseModel):
     correct_count: int
     question_count: int
     score_percent: float | None
+    # Reuses ExamAttempt.passed (already stored/set during submit_exam) so the
+    # grades matrix and its Excel export can color this row without
+    # recomputing anything.
+    passed: bool = False
     submitted_at: datetime
     # This student's average score across their completed attempts in the
     # last MONTH_WINDOW_DAYS days, across every exam in every chapter this

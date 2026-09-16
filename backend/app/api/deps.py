@@ -32,6 +32,27 @@ def get_current_user(
     return user
 
 
+def get_export_user(token: str, db: Session = Depends(get_db)) -> User:
+    """Like get_current_user, but for a download link opened in the system
+    browser rather than an API call with an Authorization header — reads the
+    token from a query parameter instead (FastAPI binds a plain `str` param
+    with no other source to the query string), and only accepts a token whose
+    purpose claim is 'grades_export' (see create_export_token), never a
+    normal session token."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired download link",
+    )
+    payload = decode_access_token(token)
+    if payload is None or payload.get("purpose") != "grades_export" or "sub" not in payload:
+        raise credentials_exception
+
+    user = db.get(User, payload["sub"])
+    if user is None or not user.is_active:
+        raise credentials_exception
+    return user
+
+
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
