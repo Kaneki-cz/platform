@@ -65,7 +65,7 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 14 },
+  wrap: { paddingHorizontal: 14, alignItems: 'center' },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -75,6 +75,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: `${colors.violet}38`,
+    width: '100%',
+    // Uncapped, this bar stretched edge-to-edge on any screen — fine on a
+    // phone in portrait, but on a wider layout (a tablet, or a phone
+    // rotated to landscape) the 4 items (see `item` below, flex: 1 each)
+    // spread out with huge gaps between icon/label instead of staying a
+    // sensibly-sized floating bar. Capping the width and centering it
+    // (rather than centering each item within a wider bar) keeps this
+    // exact same look on every phone size and just stops it from growing
+    // past a comfortable size on anything wider.
+    maxWidth: 460,
+    alignSelf: 'center',
     // BlurView handles the frosted background itself; this shadow is what
     // actually lifts the bar off the screen content behind it.
     shadowColor: '#000000',
