@@ -210,6 +210,11 @@ export interface StudentExamGradeRow {
   student_code: string | null;
   course_id: string;
   course_title: string;
+  // The chapter's OWN assigned grade level (Course.grade_level — one of
+  // GRADE_LEVELS below), not the student's own enrolled grade. null for a
+  // chapter that was never filed under one. Backs the Dashboard's
+  // grade-level filter chips and the matching filter on the Excel export.
+  course_grade_level: GradeLevel | null;
   exam_id: string;
   exam_title: string;
   correct_count: number;

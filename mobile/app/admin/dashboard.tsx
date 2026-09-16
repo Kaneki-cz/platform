@@ -7,14 +7,22 @@ import { getApiBaseUrl } from '@/lib/config';
 import { getGradesMatrix, getGradesMatrixExportLink, myDashboard } from '@/lib/api';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon } from '@/lib/icons';
+import { GRADE_LEVELS } from '@/lib/types';
 import type {
   DashboardChapter,
   ExamSpeedFlag,
+  GradeLevel,
   GradesMatrixData,
   StudentExamGradeRow,
   TeacherDashboard,
   VideoSkipFlag,
 } from '@/lib/types';
+
+// "كل الصفوف" isn't a real GradeLevel value — it's the grades-matrix
+// filter's own "no filter" state, kept as a plain sentinel string rather
+// than folding null/undefined into the filter's type everywhere it's used.
+const ALL_GRADES = 'all' as const;
+type GradeFilter = GradeLevel | typeof ALL_GRADES;
 
 /**
  * 2026 "Simple & Clean" redesign pass — replaces the earlier version's
@@ -49,6 +57,11 @@ export default function TeacherDashboardScreen() {
   const [data, setData] = useState<TeacherDashboard | null>(null);
   const [gradesMatrix, setGradesMatrix] = useState<GradesMatrixData | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Which "الصف" chip is selected for the grades-matrix section — filters
+  // BOTH the on-screen GradesTable groups below AND, via the same value
+  // passed as a query param, the Excel download. "all" (the default) means
+  // no filter, same as this section's behavior before this filter existed.
+  const [gradeFilter, setGradeFilter] = useState<GradeFilter>(ALL_GRADES);
 
   // "تحميل كملف Excel" — mints a short-lived export token (see
   // getGradesMatrixExportLink) while we still have a normal auth header,
@@ -56,13 +69,18 @@ export default function TeacherDashboardScreen() {
   // browser download can't carry our Authorization header itself. The token
   // is single-purpose and expires in 5 minutes (see create_export_token on
   // the backend) — plenty of time for the browser to pick it up, too short
-  // to matter if it ends up sitting in browser history.
+  // to matter if it ends up sitting in browser history. Carries the
+  // currently-selected grade chip along as a plain (non-secret) query param
+  // — see grades_matrix_export on the backend — so the downloaded file
+  // matches whatever's on screen.
   const handleExportExcel = useCallback(async () => {
     if (exporting) return;
     setExporting(true);
     try {
       const { token } = await getGradesMatrixExportLink();
-      const url = `${getApiBaseUrl()}/api/v1/courses/mine/grades-matrix/export?token=${encodeURIComponent(token)}`;
+      const params = new URLSearchParams({ token });
+      if (gradeFilter !== ALL_GRADES) params.set('grade_level', gradeFilter);
+      const url = `${getApiBaseUrl()}/api/v1/courses/mine/grades-matrix/export?${params}`;
       await Linking.openURL(url);
     } catch {
       // best-effort — the button itself has no inline error UI yet; a
@@ -70,7 +88,7 @@ export default function TeacherDashboardScreen() {
     } finally {
       setExporting(false);
     }
-  }, [exporting]);
+  }, [exporting, gradeFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,11 +100,18 @@ export default function TeacherDashboardScreen() {
   // One group per chapter, in the order its rows first appear (the backend
   // already orders rows by chapter) — each group renders as its own small
   // table (see GradesTable) instead of one giant table mixing every
-  // chapter's exams together.
+  // chapter's exams together. Filtered by the selected "الصف" chip first
+  // (matches Course.grade_level, not the student's own enrolled grade —
+  // see StudentExamGradeRow.course_grade_level) so a teacher managing
+  // several grade levels only sees/downloads one at a time when they want to.
   const gradesByChapter = useMemo(() => {
     const groups: { courseId: string; courseTitle: string; rows: StudentExamGradeRow[] }[] = [];
     const indexByCourseId = new Map<string, number>();
-    for (const row of gradesMatrix?.rows ?? []) {
+    const rows =
+      gradeFilter === ALL_GRADES
+        ? gradesMatrix?.rows ?? []
+        : (gradesMatrix?.rows ?? []).filter((r) => r.course_grade_level === gradeFilter);
+    for (const row of rows) {
       let idx = indexByCourseId.get(row.course_id);
       if (idx === undefined) {
         idx = groups.length;
@@ -96,7 +121,7 @@ export default function TeacherDashboardScreen() {
       groups[idx].rows.push(row);
     }
     return groups;
-  }, [gradesMatrix]);
+  }, [gradesMatrix, gradeFilter]);
 
   if (!data) {
     return (
@@ -189,7 +214,7 @@ export default function TeacherDashboardScreen() {
             </>
           ) : null}
 
-          {gradesByChapter.length > 0 ? (
+          {(gradesMatrix?.rows?.length ?? 0) > 0 ? (
             <>
               <View style={styles.gradesHeaderRow}>
                 <View style={{ flex: 1 }}>
@@ -210,9 +235,14 @@ export default function TeacherDashboardScreen() {
                   )}
                 </Pressable>
               </View>
-              {gradesByChapter.map((group) => (
-                <GradesTable key={group.courseId} courseTitle={group.courseTitle} rows={group.rows} />
-              ))}
+              <GradeFilterChips selected={gradeFilter} onSelect={setGradeFilter} />
+              {gradesByChapter.length > 0 ? (
+                gradesByChapter.map((group) => (
+                  <GradesTable key={group.courseId} courseTitle={group.courseTitle} rows={group.rows} />
+                ))
+              ) : (
+                <Text style={styles.soonText}>مفيش نتايج للصف ده — جرّب صف تاني أو "الكل".</Text>
+              )}
             </>
           ) : null}
 
@@ -338,6 +368,42 @@ function VideoSkipFlagRow({ flag }: { flag: VideoSkipFlag }) {
         {flag.skip_count}× <Text style={styles.flagStatLabel}>({flag.skipped_seconds} ث)</Text>
       </Text>
     </View>
+  );
+}
+
+// "الصف" filter chips for the grades-matrix section — "الكل" (no filter,
+// the default) plus one chip per GRADE_LEVELS entry. Filters both the
+// on-screen GradesTable groups (see gradesByChapter above) and, via the
+// same value, the Excel export — kept as simple pressable pills rather
+// than a native picker/modal to match this screen's flat, chrome-light
+// style (see the file's "Simple & Clean" note at the top).
+function GradeFilterChips({
+  selected,
+  onSelect,
+}: {
+  selected: GradeFilter;
+  onSelect: (grade: GradeFilter) => void;
+}) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gradeChipsScroll}>
+      <Pressable
+        style={[styles.gradeChip, selected === ALL_GRADES && styles.gradeChipActive]}
+        onPress={() => onSelect(ALL_GRADES)}
+      >
+        <Text style={[styles.gradeChipText, selected === ALL_GRADES && styles.gradeChipTextActive]}>الكل</Text>
+      </Pressable>
+      {GRADE_LEVELS.map((grade) => (
+        <Pressable
+          key={grade}
+          style={[styles.gradeChip, selected === grade && styles.gradeChipActive]}
+          onPress={() => onSelect(grade)}
+        >
+          <Text style={[styles.gradeChipText, selected === grade && styles.gradeChipTextActive]} numberOfLines={1}>
+            {grade}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -517,6 +583,19 @@ const styles = StyleSheet.create({
   },
   exportButtonPressed: { opacity: 0.75 },
   exportButtonText: { color: colors.onPrimary, fontFamily: fonts.bold, fontSize: 12.5 },
+
+  gradeChipsScroll: { marginTop: 12, marginBottom: 4 },
+  gradeChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginEnd: 8,
+  },
+  gradeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  gradeChipText: { fontSize: 11.5, color: colors.textMuted, fontFamily: fonts.medium },
+  gradeChipTextActive: { color: colors.onPrimary, fontFamily: fonts.bold },
 
   gradesTableBlock: { marginBottom: 18 },
   gradesTableTitle: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 8, textAlign: 'right' },
