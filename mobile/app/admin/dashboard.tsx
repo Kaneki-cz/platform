@@ -145,14 +145,14 @@ export default function TeacherDashboardScreen() {
             </>
           ) : null}
 
-          {data.exam_speed_flags.length > 0 ? (
+          {(data.exam_speed_flags ?? []).length > 0 ? (
             <>
               <SectionLabel color={colors.danger} label="امتحانات بسرعة مريبة" />
               <View style={styles.flagCard}>
                 <Text style={styles.flagHint}>
                   متوسط الوقت لكل سؤال قليل جداً — مش بالضرورة غش، بس يستاهل نظرة.
                 </Text>
-                {data.exam_speed_flags.map((f, index) => (
+                {(data.exam_speed_flags ?? []).map((f, index) => (
                   <ExamSpeedFlagRow key={`${f.user_id}-${f.exam_title}-${index}`} flag={f} />
                 ))}
               </View>
@@ -234,12 +234,12 @@ export default function TeacherDashboardScreen() {
             </View>
           )}
 
-          {data.video_skip_flags.length > 0 ? (
+          {(data.video_skip_flags ?? []).length > 0 ? (
             <>
               <SectionLabel color={colors.danger} label="طلاب بيتخطوا الفيديو" />
               <View style={styles.flagCard}>
                 <Text style={styles.flagHint}>لقّطوا/سحبوا الفيديو للأمام أكتر من مرة بدل ما يتفرجوا عليه فعلاً.</Text>
-                {data.video_skip_flags.map((f, index) => (
+                {(data.video_skip_flags ?? []).map((f, index) => (
                   <VideoSkipFlagRow key={`${f.user_id}-${f.lesson_title}-${index}`} flag={f} />
                 ))}
               </View>
