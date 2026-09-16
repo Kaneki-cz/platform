@@ -133,6 +133,12 @@ const Mp4LessonPlayer = forwardRef<LessonVideoPlayerHandle, Props>(function Mp4L
     // interval keeps the auto-pause snap close to the real boundary instead
     // of overshooting by a couple of seconds.
     p.timeUpdateEventInterval = 1;
+    // expo-video's docs say this defaults to true already, but a student
+    // speeding up playback via the native player's own speed control was
+    // getting the classic "chipmunk" pitched-up audio anyway — setting it
+    // explicitly here is cheap insurance in case the native speed control
+    // doesn't pick up the documented default on its own.
+    p.preservesPitch = true;
   });
 
   useImperativeHandle(
