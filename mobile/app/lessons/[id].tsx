@@ -12,6 +12,7 @@ import {
   updateProgress,
 } from '@/lib/api';
 import { EnrollmentModal } from '@/components/EnrollmentModal';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LessonVideoPlayer, type LessonVideoPlayerHandle } from '@/components/LessonVideoPlayer';
 import { SegmentQuiz } from '@/components/SegmentQuiz';
 import { useAuth } from '@/context/AuthContext';
@@ -257,7 +258,7 @@ export default function LessonScreen() {
             <Text style={styles.lockedHint}>{t.contactHint}</Text>
           </View>
         ) : resolvedVideoUrl ? (
-          <>
+          <ErrorBoundary label="Video player crashed">
             <LessonVideoPlayer
               ref={videoRef}
               url={resolvedVideoUrl}
@@ -270,7 +271,7 @@ export default function LessonScreen() {
             {lesson.views_allowed != null ? (
               <Text style={styles.viewsMeta}>{t.viewsLabel(lesson.views_used ?? 0, lesson.views_allowed)}</Text>
             ) : null}
-          </>
+          </ErrorBoundary>
         ) : null}
 
         {lesson.content ? <Text style={styles.content}>{lesson.content}</Text> : null}
