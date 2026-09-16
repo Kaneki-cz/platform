@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
@@ -13,9 +14,22 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 import { myDashboard } from '@/lib/api';
-import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
+import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
 import { chapterTopicIcon, icons } from '@/lib/icons';
 import type { DashboardChapter, ExamSpeedFlag, TeacherDashboard, VideoSkipFlag } from '@/lib/types';
+
+// Top-3 ranking badges for the "أداء الطلاب حسب الفصل" leaderboard below —
+// purely decorative identity for a spot in the list, never a pass/fail
+// signal (that's still isWeakest/colors.accent, entirely separate).
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+// Tick count for the dial-style completion ring in the video-activity card
+// (replaces the old plain progress bar there — see ProgressRing below).
+// Drawn as a ring of small rotated bars rather than an SVG arc, since this
+// app deliberately avoids react-native-svg (see lib/icons.ts's own comment)
+// so every visual change here can ship via `eas update` alone, no native
+// rebuild.
+const RING_TICKS = 28;
 
 // Same spirit as WEAK_SCORE_THRESHOLD below, but for the video-activity
 // card — mirrors the backend's own VIDEO_COMPLETED_THRESHOLD /
@@ -71,7 +85,11 @@ export default function TeacherDashboardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
+      <LinearGradient
+        colors={gradientBrand}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.greetEyebrow}>أهلاً بيك 👋</Text>
           <Text style={styles.greetName} numberOfLines={1}>
@@ -81,7 +99,7 @@ export default function TeacherDashboardScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
-      </View>
+      </LinearGradient>
 
       {data.chapters_count === 0 ? (
         <Text style={styles.empty}>{STRINGS_EMPTY}</Text>
@@ -115,6 +133,11 @@ export default function TeacherDashboardScreen() {
                   return (
                     <View key={c.id} style={[styles.perfRow, index === perfRows.length - 1 && styles.perfRowLast]}>
                       <View style={styles.perfTop}>
+                        <View style={styles.rankBadge}>
+                          <Text style={styles.rankBadgeText}>
+                            {index < RANK_MEDALS.length ? RANK_MEDALS[index] : `#${index + 1}`}
+                          </Text>
+                        </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.perfName} numberOfLines={1}>
                             {c.title}
@@ -186,20 +209,13 @@ export default function TeacherDashboardScreen() {
                     {data.video_activity.total_views} مشاهدة مسجلة
                   </Text>
                 </View>
-                <Text style={styles.watchPercent}>{Math.round(data.video_activity.avg_completion_percent)}%</Text>
-              </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    {
-                      width: `${Math.min(100, Math.max(2, Math.round(data.video_activity.avg_completion_percent)))}%`,
-                      backgroundColor:
-                        data.video_activity.avg_completion_percent >= VIDEO_COMPLETION_GOOD_THRESHOLD
-                          ? colors.violet
-                          : colors.accent,
-                    },
-                  ]}
+                <ProgressRing
+                  percent={data.video_activity.avg_completion_percent}
+                  color={
+                    data.video_activity.avg_completion_percent >= VIDEO_COMPLETION_GOOD_THRESHOLD
+                      ? colors.violet
+                      : colors.accent
+                  }
                 />
               </View>
               <View style={styles.watchChipsRow}>
@@ -248,6 +264,42 @@ export default function TeacherDashboardScreen() {
         </>
       )}
     </ScrollView>
+  );
+}
+
+// Dial-style completion ring — a ring of small bars rotated around the
+// center, lit up in `color` proportionally to `percent`. Replaces the old
+// horizontal progress bar in the video-activity card. Deliberately built
+// from plain rotated Views (no react-native-svg) so this ships as a JS-only
+// `eas update`, matching every other visual on this screen.
+function ProgressRing({ percent, size = 56, color }: { percent: number; size?: number; color: string }) {
+  const clamped = Math.min(100, Math.max(0, Math.round(percent)));
+  const filled = Math.round((clamped / 100) * RING_TICKS);
+  const tickLength = size * 0.16;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {Array.from({ length: RING_TICKS }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            position: 'absolute',
+            width: size,
+            height: size,
+            alignItems: 'center',
+            transform: [{ rotate: `${(360 / RING_TICKS) * i}deg` }],
+          }}>
+          <View
+            style={{
+              width: 2.5,
+              height: tickLength,
+              borderRadius: 2,
+              backgroundColor: i < filled ? color : colors.surfaceAlt,
+            }}
+          />
+        </View>
+      ))}
+      <Text style={styles.ringPercentText}>{clamped}%</Text>
+    </View>
   );
 }
 
@@ -372,14 +424,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingBottom: 40 },
   centered: { alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg },
-  greetEyebrow: { fontSize: 12, color: colors.textFaint, fontFamily: fonts.medium, marginBottom: 3 },
-  greetName: { fontSize: 19, color: colors.text, fontFamily: fonts.bold },
+  // Gradient hero banner — same cyan->violet brand gradient used on the tab
+  // bar's active pill, the login mark, and the profile screen's avatar/CTA
+  // (see constants/theme.ts's gradientBrand comment), so the very first
+  // thing a teacher sees on this screen ties back to the app's identity
+  // instead of a flat card.
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.lg,
+    ...cardShadow,
+  },
+  greetEyebrow: { fontSize: 12, color: colors.onPrimary, opacity: 0.75, fontFamily: fonts.medium, marginBottom: 3 },
+  greetName: { fontSize: 19, color: colors.onPrimary, fontFamily: fonts.bold },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: colors.violet,
+    backgroundColor: colors.onPrimary + '20',
+    borderWidth: 1,
+    borderColor: colors.onPrimary + '40',
     alignItems: 'center',
     justifyContent: 'center',
     marginStart: spacing.md,
@@ -424,7 +491,16 @@ const styles = StyleSheet.create({
   },
   perfRow: { marginBottom: 14 },
   perfRowLast: { marginBottom: 6 },
-  perfTop: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 6 },
+  perfTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  rankBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankBadgeText: { fontSize: 11, color: colors.textMuted, fontFamily: fonts.bold },
   perfName: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold },
   perfMeta: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
   perfScore: { fontSize: 14, color: colors.text, fontFamily: fonts.bold },
@@ -507,7 +583,7 @@ const styles = StyleSheet.create({
   watchIcon: { width: 17, height: 17, tintColor: colors.violet },
   watchTitle: { fontSize: 13.5, color: colors.text, fontFamily: fonts.bold, marginBottom: 2 },
   watchMeta: { fontSize: 10.5, color: colors.textFaint },
-  watchPercent: { fontSize: 20, color: colors.violet, fontFamily: fonts.bold },
+  ringPercentText: { fontSize: 12.5, color: colors.text, fontFamily: fonts.bold },
   watchChipsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   watchChip: {
     flex: 1,
