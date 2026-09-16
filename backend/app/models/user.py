@@ -81,6 +81,11 @@ class User(Base):
     # Requires migrate_v4_ai_bonus.py on an existing database.
     ai_bonus_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     ai_bonus_questions_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Student enrollment info — stored globally (once, not per-teacher).
+    # Set the first time a student fills out the EnrollmentModal for any
+    # teacher. Requires migrate_v14_enrollment.py on an existing database.
+    full_name_ar: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    grade: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     progress: Mapped[list["LessonProgress"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")

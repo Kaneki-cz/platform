@@ -39,6 +39,11 @@ class UserOut(BaseModel):
     # Extra questions granted for today only, on top of the above — see
     # app/models/user.py's ai_bonus_questions_today.
     ai_bonus_questions_today: int = 0
+    # Enrollment info — set the first time a student fills out EnrollmentModal.
+    # Stored globally (not per-teacher). None until the student has enrolled
+    # with at least one teacher.
+    full_name_ar: str | None = None
+    grade: str | None = None
 
     model_config = {"from_attributes": True}
 

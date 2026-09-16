@@ -5,7 +5,9 @@ from app.models.lesson import Lesson
 from app.models.lesson_access_code import LessonAccessCode
 from app.models.progress import LessonProgress
 from app.models.question import Question, QuestionAttempt
+from app.models.student_group_membership import StudentGroupMembership
 from app.models.subject import Subject, SubjectInstructor
+from app.models.teacher_group import TeacherGroup
 from app.models.user import User
 
 __all__ = [
@@ -22,4 +24,6 @@ __all__ = [
     "LessonAccessCode",
     "ChatSession",
     "ChatMessage",
+    "TeacherGroup",
+    "StudentGroupMembership",
 ]

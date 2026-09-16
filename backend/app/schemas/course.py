@@ -71,6 +71,10 @@ class LessonOut(BaseModel):
 
 class LessonDetailOut(LessonOut):
     content: str | None = None
+    # TeacherProfile.id of the teacher who owns this lesson's course — used by
+    # the mobile lesson screen to call the enrollment check without a separate
+    # lookup. None when the course has no teacher card assigned.
+    teacher_id: uuid.UUID | None = None
     # The next three are only ever computed for a signed-in STUDENT on a
     # max_views-capped lesson — see app/api/routes/lessons.py's get_lesson.
     # They stay None/False for instructors/admins (never capped) and for

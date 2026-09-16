@@ -104,6 +104,15 @@ def get_lesson(
             db.refresh(entry)
         views_used = entry.view_count
 
+    # Resolve the teacher who owns this lesson's course — needed by the mobile
+    # lesson screen to call the enrollment check. Loaded lazily here so the
+    # common instructor/admin path that doesn't need it pays no extra query.
+    teacher_id: uuid.UUID | None = None
+    if lesson.course_id:
+        course = db.get(Course, lesson.course_id)
+        if course:
+            teacher_id = course.teacher_id
+
     return LessonDetailOut(
         id=lesson.id,
         title=lesson.title,
@@ -119,6 +128,7 @@ def get_lesson(
         code_unlocked=code_unlocked,
         locked_by_exam=locked_by_exam,
         exempt_from_exam_gate=lesson.exempt_from_exam_gate,
+        teacher_id=teacher_id,
     )
 
 
