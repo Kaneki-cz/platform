@@ -29,6 +29,18 @@ class LessonProgress(Base):
     # app/api/routes/admin.py's POST /users/{id}/lessons/{id}/bonus-views.
     bonus_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Cheat-detection counters for the Teacher Dashboard's "who's just
+    # skipping through the video" flag (see app/api/routes/progress.py's
+    # POST /skip, called from the mobile player whenever it detects a
+    # forward jump bigger than could be normal playback — see
+    # components/LessonVideoPlayer.tsx). Aggregate-only (no per-event log):
+    # skip_count is how many such jumps this student has made in this
+    # lesson, skipped_seconds is the cumulative amount of video skipped
+    # over. Both simply accumulate — never reset — since a student
+    # re-watching a lecture normally doesn't trigger new skip events at all.
+    # Requires migrate_v15_video_skip_tracking.py on an existing database.
+    skip_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     user: Mapped["User"] = relationship(back_populates="progress")
     lesson: Mapped["Lesson"] = relationship(back_populates="progress_entries")

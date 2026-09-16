@@ -23,11 +23,13 @@ from app.schemas.course import (
     CourseUpdate,
     CourseStudentReportOut,
     DashboardChapterOut,
+    ExamSpeedFlagOut,
     ExamSummaryOut,
     ManagedCourseOut,
     StudentReportRow,
     TeacherDashboardOut,
     VideoActivityOut,
+    VideoSkipFlagOut,
 )
 from app.services import b2_storage
 
@@ -49,6 +51,22 @@ PASS_THRESHOLD = 0.75
 # anywhere else.
 VIDEO_COMPLETED_THRESHOLD = 90
 VIDEO_LOW_COMPLETION_THRESHOLD = 50
+
+# Cheat-detection flagging for the Teacher Dashboard (my_dashboard below) —
+# both are nudge lists, never anything that blocks a student.
+#
+# A single forward-skip is often just a student jumping back a few seconds
+# to rewatch something and overshooting on the way back, so only 2+ skips
+# on the same lecture crosses the bar. Mirrors LessonProgress.skip_count
+# (app/models/progress.py).
+MIN_SKIP_COUNT_TO_FLAG = 2
+# Same value as app/api/routes/exams.py's own FAST_ATTEMPT_SECONDS_PER_QUESTION
+# — kept as a separate constant (not imported) so this route module doesn't
+# depend on that one; if you change one, change both.
+FAST_ATTEMPT_SECONDS_PER_QUESTION = 8
+# Both flag lists are capped to this many rows — a nudge list, not a full
+# audit log; the per-chapter student report is where the full picture lives.
+MAX_DASHBOARD_FLAGS = 15
 
 
 @router.get("", response_model=list[CourseOut])
@@ -357,6 +375,84 @@ def my_dashboard(
                 low_completion_views_count=low_count or 0,
             )
 
+    # Video-skip flags — students whose forward-skip count on some lecture
+    # in a managed chapter crossed MIN_SKIP_COUNT_TO_FLAG. Worst
+    # (skipped_seconds) first, capped to MAX_DASHBOARD_FLAGS.
+    video_skip_flags: list[VideoSkipFlagOut] = []
+    if course_ids:
+        rows = (
+            db.query(LessonProgress, Lesson.title, Course.title, User)
+            .join(Lesson, Lesson.id == LessonProgress.lesson_id)
+            .join(Course, Course.id == Lesson.course_id)
+            .join(User, User.id == LessonProgress.user_id)
+            .filter(Lesson.course_id.in_(course_ids), LessonProgress.skip_count >= MIN_SKIP_COUNT_TO_FLAG)
+            .order_by(LessonProgress.skipped_seconds.desc())
+            .limit(MAX_DASHBOARD_FLAGS)
+            .all()
+        )
+        video_skip_flags = [
+            VideoSkipFlagOut(
+                user_id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                lesson_title=lesson_title,
+                course_title=course_title,
+                skip_count=progress.skip_count,
+                skipped_seconds=progress.skipped_seconds,
+            )
+            for progress, lesson_title, course_title, user in rows
+        ]
+
+    # Exam-speed flags — completed attempts whose average time-per-question
+    # fell below FAST_ATTEMPT_SECONDS_PER_QUESTION, fastest first, capped to
+    # MAX_DASHBOARD_FLAGS. Computed in Python (not SQL) since the "fast"
+    # threshold depends on each exam's own question count.
+    exam_speed_flags: list[ExamSpeedFlagOut] = []
+    if course_ids:
+        question_count_rows = (
+            db.query(Question.exam_id, func.count(Question.id))
+            .join(Exam, Exam.id == Question.exam_id)
+            .filter(Exam.course_id.in_(course_ids))
+            .group_by(Question.exam_id)
+            .all()
+        )
+        question_counts = dict(question_count_rows)
+
+        attempt_rows = (
+            db.query(ExamAttempt, Exam.id, Exam.title, Course.title, User)
+            .join(Exam, Exam.id == ExamAttempt.exam_id)
+            .join(Course, Course.id == Exam.course_id)
+            .join(User, User.id == ExamAttempt.user_id)
+            .filter(
+                Exam.course_id.in_(course_ids),
+                ExamAttempt.submitted_at.isnot(None),
+                ExamAttempt.duration_seconds.isnot(None),
+            )
+            .all()
+        )
+        candidates: list[ExamSpeedFlagOut] = []
+        for attempt, exam_id, exam_title, course_title, user in attempt_rows:
+            qcount = question_counts.get(exam_id, 0)
+            if qcount <= 0:
+                continue
+            seconds_per_question = attempt.duration_seconds / qcount
+            if seconds_per_question < FAST_ATTEMPT_SECONDS_PER_QUESTION:
+                candidates.append(
+                    ExamSpeedFlagOut(
+                        user_id=user.id,
+                        full_name=user.full_name,
+                        email=user.email,
+                        exam_title=exam_title,
+                        course_title=course_title,
+                        score_percent=attempt.score_percent,
+                        duration_seconds=attempt.duration_seconds,
+                        question_count=qcount,
+                        seconds_per_question=round(seconds_per_question, 1),
+                    )
+                )
+        candidates.sort(key=lambda f: f.seconds_per_question)
+        exam_speed_flags = candidates[:MAX_DASHBOARD_FLAGS]
+
     return TeacherDashboardOut(
         chapters_count=len(courses),
         lectures_count=sum(lecture_counts.values()),
@@ -364,6 +460,8 @@ def my_dashboard(
         pass_rate_percent=(total_passed / total_attempts * 100) if total_attempts else None,
         chapters=chapters_out,
         video_activity=video_activity,
+        video_skip_flags=video_skip_flags,
+        exam_speed_flags=exam_speed_flags,
     )
 
 
@@ -412,6 +510,23 @@ def course_student_report(
         for user_id, exam_id in rows:
             attempted_by_user[user_id].add(exam_id)
 
+    # Per-student skip totals, scoped to just this chapter's lectures (see
+    # StudentReportRow.skip_count/skipped_seconds) — unlike the dashboard's
+    # video_skip_flags, which rolls up across every managed chapter.
+    skip_totals_by_user: dict[uuid.UUID, tuple[int, int]] = {}
+    if lesson_titles:
+        rows = (
+            db.query(
+                LessonProgress.user_id,
+                func.sum(LessonProgress.skip_count),
+                func.sum(LessonProgress.skipped_seconds),
+            )
+            .filter(LessonProgress.lesson_id.in_(lesson_titles.keys()))
+            .group_by(LessonProgress.user_id)
+            .all()
+        )
+        skip_totals_by_user = {user_id: (skip_count or 0, skipped_seconds or 0) for user_id, skip_count, skipped_seconds in rows}
+
     student_ids = set(watched_by_user) | set(attempted_by_user)
     students_out: list[StudentReportRow] = []
     if student_ids:
@@ -419,6 +534,7 @@ def course_student_report(
         for u in users:
             watched_ids = watched_by_user.get(u.id, set())
             attempted_ids = attempted_by_user.get(u.id, set())
+            skip_count, skipped_seconds = skip_totals_by_user.get(u.id, (0, 0))
             students_out.append(
                 StudentReportRow(
                     user_id=u.id,
@@ -428,6 +544,8 @@ def course_student_report(
                     missing_lesson_titles=[title for lid, title in lesson_titles.items() if lid not in watched_ids],
                     attempted_exams_count=len(attempted_ids),
                     missing_exam_titles=[title for eid, title in exam_titles.items() if eid not in attempted_ids],
+                    skip_count=skip_count,
+                    skipped_seconds=skipped_seconds,
                 )
             )
     # Students with the most gaps (unwatched lectures + un-attempted exams)

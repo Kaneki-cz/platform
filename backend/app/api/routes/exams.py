@@ -27,6 +27,8 @@ from app.models.question import Question, QuestionAttempt
 from app.models.user import User
 from app.schemas.exam import (
     ExamAnswerResult,
+    ExamAttemptRow,
+    ExamAttemptsOut,
     ExamCreate,
     ExamOut,
     ExamQuestionForStudent,
@@ -38,6 +40,13 @@ from app.schemas.exam import (
 )
 
 router = APIRouter(prefix="/api/v1/exams", tags=["exams"])
+
+# An attempt whose average time-per-question falls below this is flagged
+# as suspiciously fast on the teacher-facing attempts list (ExamAttemptRow.
+# is_fast) — a nudge, not an enforced rule (per the user's explicit call:
+# flag it, never block the student). 8s/question is comfortably below even
+# a quick confident read-and-answer for this platform's question style.
+FAST_ATTEMPT_SECONDS_PER_QUESTION = 8
 
 
 def _grade(question: Question, submitted_answer: str) -> bool:
@@ -144,6 +153,63 @@ def update_exam(
     out = ExamOut.model_validate(exam)
     out.question_count = _question_count(db, exam.id)
     return out
+
+
+@router.get("/{exam_id}/attempts", response_model=ExamAttemptsOut)
+def list_exam_attempts(
+    exam_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> ExamAttemptsOut:
+    """Teacher-facing "grades" view for one exam — every completed attempt
+    (submitted_at set; an abandoned in-progress attempt never shows up
+    here), newest first, with is_fast flagging a suspiciously quick one.
+    Same access rule as every other exam-management endpoint: admins see
+    any exam, an instructor only one in a chapter their linked teacher card
+    owns (see ensure_can_manage_course)."""
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    ensure_can_manage_course(db, current_user, exam.course_id)
+
+    question_count = _question_count(db, exam_id)
+
+    rows = (
+        db.query(ExamAttempt, User)
+        .join(User, User.id == ExamAttempt.user_id)
+        .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.submitted_at.isnot(None))
+        .order_by(ExamAttempt.submitted_at.desc())
+        .all()
+    )
+
+    attempts: list[ExamAttemptRow] = []
+    for attempt, user in rows:
+        is_fast = (
+            question_count > 0
+            and attempt.duration_seconds is not None
+            and (attempt.duration_seconds / question_count) < FAST_ATTEMPT_SECONDS_PER_QUESTION
+        )
+        attempts.append(
+            ExamAttemptRow(
+                attempt_id=attempt.id,
+                user_id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                score_percent=attempt.score_percent,
+                passed=attempt.passed,
+                duration_seconds=attempt.duration_seconds,
+                started_at=attempt.started_at,
+                submitted_at=attempt.submitted_at,
+                is_fast=is_fast,
+            )
+        )
+
+    return ExamAttemptsOut(
+        exam_id=exam.id,
+        exam_title=exam.title,
+        question_count=question_count,
+        attempts=attempts,
+    )
 
 
 @router.delete("/{exam_id}", status_code=204)

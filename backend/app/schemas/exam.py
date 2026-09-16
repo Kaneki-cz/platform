@@ -96,3 +96,30 @@ class ExamStatusOut(BaseModel):
     best_score_percent: float | None = None
     in_progress_attempt_id: uuid.UUID | None = None
     in_progress_started_at: datetime | None = None
+
+
+class ExamAttemptRow(BaseModel):
+    """One student's one completed sitting of an exam — the teacher-facing
+    "grades" view (see GET /api/v1/exams/{exam_id}/attempts), one row per
+    ExamAttempt with submitted_at set. is_fast flags an attempt whose
+    average time-per-question fell below FAST_ATTEMPT_SECONDS_PER_QUESTION
+    (app/api/routes/exams.py) — a nudge for the teacher to take a closer
+    look, never something that blocks or penalizes the student."""
+
+    attempt_id: uuid.UUID
+    user_id: uuid.UUID
+    full_name: str | None
+    email: str
+    score_percent: float | None
+    passed: bool
+    duration_seconds: int | None
+    started_at: datetime
+    submitted_at: datetime | None
+    is_fast: bool = False
+
+
+class ExamAttemptsOut(BaseModel):
+    exam_id: uuid.UUID
+    exam_title: str
+    question_count: int
+    attempts: list[ExamAttemptRow] = []

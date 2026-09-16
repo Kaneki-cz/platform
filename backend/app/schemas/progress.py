@@ -11,8 +11,20 @@ class ProgressUpdate(BaseModel):
 class ProgressOut(BaseModel):
     lesson_id: uuid.UUID
     completion_percent: float
+    skip_count: int = 0
+    skipped_seconds: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ProgressSkipUpdate(BaseModel):
+    """One detected forward-skip event, reported by the mobile player (see
+    components/LessonVideoPlayer.tsx) whenever it sees a jump ahead bigger
+    than normal playback could produce. Aggregated server-side onto the
+    student's LessonProgress row for this lesson — see POST /skip."""
+
+    lesson_id: uuid.UUID
+    skipped_seconds: int = Field(gt=0)
 
 
 class LessonViewOut(BaseModel):

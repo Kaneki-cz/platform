@@ -188,6 +188,43 @@ class VideoActivityOut(BaseModel):
     low_completion_views_count: int
 
 
+class VideoSkipFlagOut(BaseModel):
+    """One (student, lecture) pair worth a teacher's attention — the
+    student's LessonProgress.skip_count/skipped_seconds on this lecture
+    crossed the dashboard's flagging bar (see my_dashboard's
+    MIN_SKIP_COUNT_TO_FLAG). Sorted by skipped_seconds descending and
+    capped to the worst few across every managed chapter — this is a nudge
+    list, not a full audit log."""
+
+    user_id: uuid.UUID
+    full_name: str | None
+    email: str
+    lesson_title: str
+    course_title: str
+    skip_count: int
+    skipped_seconds: int
+
+
+class ExamSpeedFlagOut(BaseModel):
+    """One suspiciously fast completed exam attempt worth a teacher's
+    attention — same is_fast rule as ExamAttemptRow
+    (app/schemas/exam.py/app/api/routes/exams.py's
+    FAST_ATTEMPT_SECONDS_PER_QUESTION), rolled up across every chapter this
+    teacher manages instead of one exam at a time. Sorted by
+    seconds_per_question ascending (fastest first) and capped to the
+    worst few — a nudge list, not a full audit log."""
+
+    user_id: uuid.UUID
+    full_name: str | None
+    email: str
+    exam_title: str
+    course_title: str
+    score_percent: float | None
+    duration_seconds: int
+    question_count: int
+    seconds_per_question: float
+
+
 class TeacherDashboardOut(BaseModel):
     """Aggregated stats backing the Teacher Dashboard screen — same chapter
     scoping as GET /api/v1/courses/mine/managed (every chapter for an admin,
@@ -205,6 +242,10 @@ class TeacherDashboardOut(BaseModel):
     # managed chapter — lets the mobile screen show a real "no data yet"
     # state instead of a misleading 0%.
     video_activity: VideoActivityOut | None = None
+    # Both empty (never null) when nothing has crossed the flagging bar yet
+    # — see my_dashboard for how each is computed.
+    video_skip_flags: list[VideoSkipFlagOut] = []
+    exam_speed_flags: list[ExamSpeedFlagOut] = []
 
 
 class StudentReportRow(BaseModel):
@@ -225,6 +266,12 @@ class StudentReportRow(BaseModel):
     missing_lesson_titles: list[str]
     attempted_exams_count: int
     missing_exam_titles: list[str]
+    # Summed across every lecture of THIS chapter only (unlike the
+    # dashboard's video_skip_flags, which is cross-chapter) — see
+    # LessonProgress.skip_count/skipped_seconds. 0 for a student with no
+    # detected skips in this chapter.
+    skip_count: int = 0
+    skipped_seconds: int = 0
 
 
 class CourseStudentReportOut(BaseModel):
