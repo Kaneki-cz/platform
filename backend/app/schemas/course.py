@@ -267,6 +267,14 @@ class StudentExamGradeRow(BaseModel):
     student_code: str | None = None
     course_id: uuid.UUID
     course_title: str
+    # The chapter's OWN assigned grade level (Course.grade_level, one of
+    # GradeLevel's 4 fixed strings) — None for a chapter that was never
+    # filed under one. Lets the Dashboard's grade-level filter (and the
+    # matching filter on the Excel export) group/scope rows without
+    # depending on parsing course_title. Deliberately NOT the student's own
+    # enrolled grade (User.grade) — a chapter's grade level is the more
+    # reliable, always-set-by-an-admin source of truth here.
+    course_grade_level: str | None = None
     exam_id: uuid.UUID
     exam_title: str
     correct_count: int

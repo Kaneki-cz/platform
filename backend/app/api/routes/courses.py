@@ -526,6 +526,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
     courses = query.all()
     course_ids = [c.id for c in courses]
     course_titles = {c.id: c.title for c in courses}
+    course_grade_levels = {c.id: c.grade_level for c in courses}
     if not course_ids:
         return []
 
@@ -595,6 +596,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
                 student_code=None,
                 course_id=exam.course_id,
                 course_title=course_titles.get(exam.course_id, ""),
+                course_grade_level=course_grade_levels.get(exam.course_id),
                 exam_id=exam.id,
                 exam_title=exam.title,
                 correct_count=correct_counts.get(attempt.id, 0),
@@ -627,6 +629,7 @@ def grades_matrix_export_link(
 
 @router.get("/mine/grades-matrix/export")
 def grades_matrix_export(
+    grade_level: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_export_user),
 ) -> StreamingResponse:
@@ -634,11 +637,21 @@ def grades_matrix_export(
     browser rather than called from the app — so it's authenticated by the
     short-lived query-param token from grades_matrix_export_link above
     (get_export_user), not the normal Bearer header. Still enforces the
-    same instructor/admin gate as every other teacher-facing endpoint."""
+    same instructor/admin gate as every other teacher-facing endpoint.
+
+    `grade_level` is a plain, non-secret query param (NOT part of the export
+    token — the token only proves identity/purpose) mirroring whichever
+    "الصف" chip the teacher had selected on the Dashboard when they tapped
+    download. Omitted/None = every grade level, same as before this filter
+    existed. Filtered here in Python against the already-built rows rather
+    than pushed into the SQL above, since _grades_matrix_rows is shared with
+    the on-screen JSON endpoint and this keeps that query untouched."""
     if current_user.role not in (UserRole.instructor, UserRole.admin):
         raise HTTPException(status_code=403, detail="Instructor access required")
 
     rows = _grades_matrix_rows(db, current_user)
+    if grade_level:
+        rows = [r for r in rows if r.course_grade_level == grade_level]
     workbook_bytes = build_grades_workbook(rows)
     filename = f"grades-{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     return StreamingResponse(
