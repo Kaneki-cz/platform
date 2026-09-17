@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 import { useAuth } from '@/context/AuthContext';
@@ -92,7 +92,13 @@ export default function ProfileScreen() {
   const canManage = user?.role === 'instructor' || user?.role === 'admin';
 
   return (
-    <View style={styles.container}>
+    // Was a plain View — on a shorter screen (or in landscape) the content
+    // (avatar, name, badge, the QR code card for students, manage button,
+    // logout) could add up to taller than the visible area with no way to
+    // reach whatever fell below the fold, logout included. A ScrollView
+    // costs nothing when everything already fits (it just doesn't scroll)
+    // and fixes it the moment it doesn't.
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       {/* Gradient avatar (2026 redesign pass, missed in the first implementation
           pass) — same treatment as the login screen's Ω mark, instead of a
           flat cyan circle. */}
@@ -130,12 +136,13 @@ export default function ProfileScreen() {
       <Pressable style={styles.logoutButton} onPress={logout}>
         <Text style={styles.logoutText}>{t.logout}</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', padding: spacing.xl, paddingTop: 60 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  container: { alignItems: 'center', padding: spacing.xl, paddingTop: 60, paddingBottom: 40, flexGrow: 1 },
   avatar: {
     width: 80,
     height: 80,
