@@ -11,6 +11,7 @@ export default function CoursesLayout() {
         headerTitleStyle: { color: colors.text },
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
+        animation: 'ios_from_right',
       }}>
       <Stack.Screen name="index" options={{ title: 'Subjects' }} />
       <Stack.Screen name="[subjectId]/index" options={{ title: 'Subject' }} />

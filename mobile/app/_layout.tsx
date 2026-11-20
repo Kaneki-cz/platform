@@ -61,16 +61,30 @@ function RootStack() {
         // during screen transitions, before each screen's own View
         // paints its background.
         contentStyle: { backgroundColor: colors.background },
+        // iOS-style push (new screen slides in, the old one parallaxes
+        // behind it) on both platforms — Android's platform default is a
+        // flat fade/zoom that reads as "the screen swapped" rather than
+        // "you went deeper".
+        animation: 'ios_from_right',
       }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
+      {/* Logging in/out cross-fades rather than sliding — it's a context
+          switch, not navigating deeper. */}
+      <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+      <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
       <Stack.Screen
         name="lessons/[id]"
         options={{ headerShown: true, title: language === 'ar' ? 'الدرس' : 'Lesson', presentation: 'card' }}
       />
       <Stack.Screen
         name="exams/[examId]"
-        options={{ headerShown: true, title: language === 'ar' ? 'امتحان' : 'Exam', presentation: 'card' }}
+        options={{
+          headerShown: true,
+          title: language === 'ar' ? 'امتحان' : 'Exam',
+          presentation: 'card',
+          // Rises up like a sheet: an exam is a focused task you enter and
+          // leave, not another level of browsing.
+          animation: 'fade_from_bottom',
+        }}
       />
       <Stack.Screen name="admin" />
       <Stack.Screen

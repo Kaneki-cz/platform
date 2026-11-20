@@ -2,6 +2,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+
+import { PressableScale, enterStagger } from '@/components/motion';
 
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { getSubject, listTeachers } from '@/lib/api';
@@ -209,7 +212,8 @@ function CourseGrid({
       contentContainerStyle={{ paddingTop: spacing.md }}
       columnWrapperStyle={columns > 1 ? { gap: spacing.sm } : undefined}
       renderItem={({ item, index }) => (
-        <Pressable style={({ pressed }) => [styles.courseCard, pressed && styles.pressed]} onPress={() => onSelect(item)}>
+        <Animated.View entering={enterStagger(index)} style={columns > 1 ? { flex: 1 } : undefined}>
+        <PressableScale style={styles.courseCard} onPress={() => onSelect(item)}>
           {/* Poster-style cover (2026 redesign pass): cover art fills the
               card, a bottom scrim keeps the number badge legible over any
               image, and the badge replaces the old "{index+1}. " text
@@ -253,7 +257,8 @@ function CourseGrid({
               {item.description}
             </Text>
           ) : null}
-        </Pressable>
+        </PressableScale>
+        </Animated.View>
       )}
       ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
     />

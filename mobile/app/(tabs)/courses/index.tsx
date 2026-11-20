@@ -1,6 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+
+import { PressableScale, Skeleton, enterStagger } from '@/components/motion';
 
 import { listSubjects } from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -17,7 +20,7 @@ export default function SubjectsScreen() {
   const router = useRouter();
   const { language } = useLanguage();
   const t = STRINGS[language];
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<Subject[] | null>(null);
 
   // useFocusEffect (not useEffect) so a subject added/edited elsewhere shows
   // up here as soon as you navigate back, without a full app reload.
@@ -29,24 +32,31 @@ export default function SubjectsScreen() {
 
   return (
     <View style={styles.container}>
+      {subjects === null ? (
+        <View style={{ padding: 16 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} style={styles.skeletonCard} />
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={subjects}
         keyExtractor={(s) => s.id}
         contentContainerStyle={{ padding: 16 }}
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-            onPress={() => router.push(`/(tabs)/courses/${item.id}`)}
-          >
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterStagger(index)}>
+          <PressableScale style={styles.card} onPress={() => router.push(`/(tabs)/courses/${item.id}`)}>
             <View style={styles.iconBadge}>
               <Image source={subjectIconSource(item.name)} style={styles.icon} />
             </View>
             <Text style={styles.title}>{item.name}</Text>
             <Text style={styles.chevron}>›</Text>
-          </Pressable>
+          </PressableScale>
+          </Animated.View>
         )}
         ListEmptyComponent={<Text style={styles.empty}>{t.empty}</Text>}
       />
+      )}
     </View>
   );
 }
@@ -62,7 +72,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...cardShadow,
   },
-  cardPressed: { opacity: 0.85 },
+  skeletonCard: { height: 84, borderRadius: radius.lg + 4, marginBottom: spacing.md },
   // No gradient wrapper here anymore — the Direction-B icon PNG already
   // bakes in its own colored radial-gradient badge circle.
   iconBadge: {

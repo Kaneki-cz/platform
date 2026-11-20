@@ -1,10 +1,12 @@
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PressableScale, springs } from '@/components/motion';
 import { colors, gradientBrand, radius } from '@/constants/theme';
 
 /**
@@ -22,10 +24,38 @@ import { colors, gradientBrand, radius } from '@/constants/theme';
  */
 export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const count = state.routes.length;
+  const [itemWidth, setItemWidth] = useState(0);
+  const pillX = useSharedValue(0);
+
+  // Width of one tab slot, measured from the bar itself (items are flex: 1,
+  // so every slot is the same width) — the active pill is one shared view
+  // that glides between slots, rather than each tab drawing its own.
+  const onBarLayout = (e: LayoutChangeEvent) => {
+    const inner = e.nativeEvent.layout.width - BAR_PADDING * 2 - BAR_BORDER * 2;
+    setItemWidth((inner - ITEM_GAP * (count - 1)) / count);
+  };
+
+  useEffect(() => {
+    if (!itemWidth) return;
+    pillX.value = withSpring(state.index * (itemWidth + ITEM_GAP), springs.glide);
+  }, [state.index, itemWidth, pillX]);
+
+  const pillStyle = useAnimatedStyle(() => ({ transform: [{ translateX: pillX.value }] }));
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
-      <BlurView intensity={40} tint="dark" style={styles.bar}>
+      <BlurView intensity={40} tint="dark" style={styles.bar} onLayout={onBarLayout}>
+        {itemWidth > 0 ? (
+          <Animated.View style={[styles.activePill, { width: itemWidth }, pillStyle]} pointerEvents="none">
+            <LinearGradient
+              colors={[`${gradientBrand[0]}29`, `${gradientBrand[1]}29`]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        ) : null}
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
           const focused = state.index === index;
@@ -40,23 +70,20 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
           };
 
           return (
-            <Pressable key={route.key} onPress={onPress} style={styles.item} hitSlop={6}>
-              {focused ? (
-                <LinearGradient
-                  colors={[`${gradientBrand[0]}29`, `${gradientBrand[1]}29`]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.activePill}
-                >
-                  {icon}
-                  <Text style={styles.activeLabel} numberOfLines={1}>
+            <PressableScale key={route.key} onPress={onPress} style={styles.item} hitSlop={6} scaleTo={0.9}>
+              <View style={styles.itemInner}>
+                {icon}
+                {focused ? (
+                  <Animated.Text
+                    entering={FadeIn.duration(220).delay(90)}
+                    style={styles.activeLabel}
+                    numberOfLines={1}
+                  >
                     {label}
-                  </Text>
-                </LinearGradient>
-              ) : (
-                <View style={styles.inactivePill}>{icon}</View>
-              )}
-            </Pressable>
+                  </Animated.Text>
+                ) : null}
+              </View>
+            </PressableScale>
           );
         })}
       </BlurView>
@@ -64,13 +91,17 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
   );
 }
 
+const BAR_PADDING = 8;
+const BAR_BORDER = 1;
+const ITEM_GAP = 4;
+
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 14, alignItems: 'center' },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    padding: 8,
+    gap: ITEM_GAP,
+    padding: BAR_PADDING,
     borderRadius: 28,
     overflow: 'hidden',
     borderWidth: 1,
@@ -95,16 +126,24 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   item: { flex: 1 },
-  inactivePill: { alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: radius.pill },
-  activePill: {
+  itemInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
+  },
+  // One shared capsule that slides under whichever tab is active (see
+  // AppTabBar's pillX) instead of popping in/out per tab.
+  activePill: {
+    position: 'absolute',
+    left: BAR_PADDING,
+    top: BAR_PADDING,
+    bottom: BAR_PADDING,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: `${colors.primary}59`,
+    overflow: 'hidden',
   },
   activeLabel: { color: colors.primary, fontSize: 11.5, fontWeight: '700' },
 });

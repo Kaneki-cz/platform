@@ -3,9 +3,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, ZoomIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { Celebration } from '@/components/Celebration';
 import { MathText } from '@/components/MathText';
+import { ProgressRing, enterStagger, useCountUp } from '@/components/motion';
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
@@ -370,17 +372,25 @@ export default function ExamScreen() {
     return (
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.summary}>
-            <Text style={[styles.summaryHeading, result.passed ? styles.summaryGood : styles.summaryBad]}>
+          <Animated.View entering={ZoomIn.springify().damping(14)} style={styles.summary}>
+            <ProgressRing percent={result.score_percent} size={112} stroke={11}>
+              <ScoreLabel percent={result.score_percent} good={result.passed} />
+            </ProgressRing>
+            <Animated.Text
+              entering={FadeInDown.delay(250)}
+              style={[styles.summaryHeading, result.passed ? styles.summaryGood : styles.summaryBad]}
+            >
               {t.resultHeading(result.correct_count, result.total_count)}
-            </Text>
-            <Text style={styles.summarySub}>{t.resultPercent(result.score_percent)}</Text>
+            </Animated.Text>
             <Text style={styles.summarySub}>{t.resultDuration(formatDuration(result.duration_seconds))}</Text>
-            <Text style={styles.summaryMessage}>{result.passed ? t.passMessage : t.failMessage}</Text>
-          </View>
+            <Animated.Text entering={FadeInDown.delay(400)} style={styles.summaryMessage}>
+              {result.passed ? t.passMessage : t.failMessage}
+            </Animated.Text>
+            {result.passed ? <Celebration /> : null}
+          </Animated.View>
 
           {result.answers.map((a, index) => (
-            <View key={a.question_id} style={styles.card}>
+            <Animated.View key={a.question_id} entering={enterStagger(index, 450)} style={styles.card}>
               <Text style={styles.questionIndex}>{index + 1}.</Text>
               <View style={styles.resultRow}>
                 <Text
@@ -392,7 +402,7 @@ export default function ExamScreen() {
                   <MathText text={a.explanation} color={colors.textMuted} fontSize={13} style={styles.explanation} />
                 ) : null}
               </View>
-            </View>
+            </Animated.View>
           ))}
 
           <View style={styles.resultActions}>
@@ -561,7 +571,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...cardShadow,
   },
-  summaryHeading: { fontSize: 22, marginBottom: spacing.xs, fontFamily: fonts.bold },
+  summaryHeading: { fontSize: 22, marginTop: spacing.md, marginBottom: spacing.xs, fontFamily: fonts.bold },
+  scoreValue: { fontSize: 26, fontFamily: fonts.bold, lineHeight: 32 },
   summaryGood: { color: colors.success },
   summaryBad: { color: colors.danger },
   summarySub: { color: colors.textMuted, fontSize: 13, marginTop: 2, fontFamily: fonts.regular },
@@ -580,3 +591,9 @@ const styles = StyleSheet.create({
   backButton: { borderRadius: radius.pill, paddingVertical: 14, alignItems: 'center' },
   backButtonText: { color: colors.onPrimary, fontSize: 16, fontFamily: fonts.bold },
 });
+
+/** The big number inside the result ring — counts up alongside the ring's sweep. */
+function ScoreLabel({ percent, good }: { percent: number; good: boolean }) {
+  const shown = useCountUp(Math.round(percent), 1300);
+  return <Text style={[styles.scoreValue, { color: good ? colors.success : colors.text }]}>{shown}%</Text>;
+}

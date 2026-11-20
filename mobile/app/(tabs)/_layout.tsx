@@ -52,6 +52,8 @@ export default function TabsLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: { color: colors.text },
         headerShadowVisible: false,
+        // Switching tabs nudges the screens sideways instead of hard-cutting.
+        animation: 'shift',
       }}>
       <Tabs.Screen
         name="index"
