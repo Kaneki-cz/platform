@@ -813,6 +813,39 @@ export function startExam(examId: string) {
   return request<ExamStartResult>(`/api/v1/exams/${examId}/start`, { method: 'POST' });
 }
 
+/** Student. Uploads a photo of a handwritten solution for one essay
+ * question on your open attempt, straight to storage, and returns the value
+ * to use as that question's answer. */
+export async function uploadExamAnswerPhoto(
+  attemptId: string,
+  questionId: string,
+  uri: string,
+  fileName = 'answer.jpg',
+  onProgress?: UploadProgressCallback,
+): Promise<string> {
+  const plan = await request<{ upload_url: string; content_type: string; file_url: string }>(
+    `/api/v1/exams/attempts/${attemptId}/answer-photo`,
+    { method: 'POST', body: JSON.stringify({ question_id: questionId, file_name: fileName }) },
+  );
+  const task = FileSystem.createUploadTask(
+    plan.upload_url,
+    uri,
+    {
+      httpMethod: 'PUT',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: { 'Content-Type': plan.content_type },
+    },
+    (data) => {
+      if (onProgress && data.totalBytesExpectedToSend > 0) onProgress(data.totalBytesSent / data.totalBytesExpectedToSend);
+    },
+  );
+  const result = await task.uploadAsync();
+  if (!result || result.status < 200 || result.status >= 300) {
+    throw new ApiError(result?.status ?? 0, `Photo upload failed: HTTP ${result?.status ?? 'unknown'}`);
+  }
+  return plan.file_url;
+}
+
 /** Student. Reopen one of your own submitted attempts — e.g. to see the
  * final score after the teacher graded your essay answers. */
 export function getAttemptResult(attemptId: string) {

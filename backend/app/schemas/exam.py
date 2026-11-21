@@ -97,6 +97,9 @@ class ExamStartOut(BaseModel):
     # Restored draft when resuming ({question_id: answer}, [question_id]).
     saved_answers: dict[str, str] = {}
     flagged_question_ids: list[str] = []
+    # Signed links for saved photo answers, so a resumed attempt can show
+    # the photos again ({question_id: url}).
+    saved_answer_images: dict[str, str] = {}
 
 
 class ExamDraftIn(BaseModel):
@@ -132,6 +135,9 @@ class ExamAnswerResult(BaseModel):
     pending_review: bool = False
     teacher_comment: str | None = None
     submitted_answer: str | None = None
+    # Signed, short-lived link to the student's photo answer (essay
+    # questions), when the answer is a photo.
+    answer_image_url: str | None = None
 
 
 class ExamSubmitResult(BaseModel):
@@ -244,6 +250,8 @@ class ReviewItem(BaseModel):
     model_answer: str | None = None
     max_points: int
     submitted_answer: str
+    # Signed link to the photo when the student answered with a photo.
+    answer_image_url: str | None = None
     submitted_at: datetime | None
     points_awarded: float | None = None
     teacher_comment: str | None = None
@@ -263,6 +271,22 @@ class ReviewResult(BaseModel):
     attempt_finalized: bool
     attempt_score_percent: float | None = None
     attempt_passed: bool | None = None
+
+
+
+class AnswerPhotoUploadIn(BaseModel):
+    question_id: uuid.UUID
+    file_name: str = "answer.jpg"
+    content_type: str = "image/jpeg"
+
+
+class AnswerPhotoUploadOut(BaseModel):
+    """PUT the photo bytes to upload_url (with this Content-Type), then use
+    file_url as the answer to that question."""
+
+    upload_url: str
+    content_type: str
+    file_url: str
 
 
 ExamStatusOut.model_rebuild()

@@ -744,6 +744,8 @@ export interface ExamStartResult {
   server_now?: string | null;
   saved_answers?: Record<string, string>;
   flagged_question_ids?: string[];
+  // Signed view links for saved photo answers ({question_id: url}).
+  saved_answer_images?: Record<string, string>;
 }
 
 export interface ExamAnswerSubmit {
@@ -764,6 +766,8 @@ export interface ExamAnswerResult {
   pending_review?: boolean;
   teacher_comment?: string | null;
   submitted_answer?: string | null;
+  // Signed link to the student's photo answer (essay questions).
+  answer_image_url?: string | null;
 }
 
 export interface ExamSubmitResult {
@@ -841,6 +845,7 @@ export interface ReviewItem {
   model_answer: string | null;
   max_points: number;
   submitted_answer: string;
+  answer_image_url?: string | null;
   submitted_at: string | null;
   points_awarded: number | null;
   teacher_comment: string | null;

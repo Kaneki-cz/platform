@@ -323,7 +323,7 @@ export default function ManageExamQuestionsScreen() {
             </View>
             <Text style={styles.typeHint}>
               {questionType === 'essay'
-                ? 'The student writes a full answer. The exam result stays pending until you grade it from the exam\'s Review screen.'
+                ? 'The student solves it on paper and uploads a photo of the solution. The result stays pending until you grade it from the exam\'s grading screen.'
                 : questionType === 'free_response'
                   ? 'Graded automatically: the student\'s answer must match the correct answer.'
                   : 'Graded automatically from the letter you mark as correct.'}

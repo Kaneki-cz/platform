@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, ZoomIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { Celebration } from '@/components/Celebration';
+import { ImageViewerModal } from '@/components/ImageViewerModal';
 import { MathText } from '@/components/MathText';
+import { PhotoAnswer } from '@/components/PhotoAnswer';
 import { PressableScale, ProgressRing, enterStagger, useCountUp } from '@/components/motion';
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { useLanguage } from '@/context/LanguageContext';
@@ -72,11 +74,12 @@ const STRINGS = {
     retry: 'جرّب تاني',
     points: (n: number) => `${n} ${n === 1 ? 'درجة' : 'درجات'}`,
     essayPlaceholder: 'اكتب إجابتك بالتفصيل...',
-    essayNote: 'سؤال مقالي — المستر هيصححه بنفسه.',
+    essayNote: 'سؤال مقالي — حلّه على ورقة وابعت صورة، والمستر هيصححه بنفسه.',
     pendingTitle: 'مستني تصحيح المستر',
     pendingBody: 'إجاباتك المقالية وصلت للمستر. النتيجة النهائية هتظهر هنا أول ما يصححها.',
     pendingSoFar: (earned: number, total: number) => `جمعت ${earned} من ${total} درجة لحد دلوقتي (من غير المقالي)`,
     pendingBadge: 'مستني التصحيح',
+    photoAttached: 'صورة الحل مرفوعة',
     graded: 'اتصحح',
     teacherComment: 'تعليق المستر:',
     yourAnswer: 'إجابتك:',
@@ -141,11 +144,12 @@ const STRINGS = {
     retry: 'Try again',
     points: (n: number) => `${n} pt${n === 1 ? '' : 's'}`,
     essayPlaceholder: 'Write your full answer...',
-    essayNote: 'Essay question — your teacher grades this one.',
+    essayNote: 'Essay question — solve it on paper and send a photo; your teacher grades it.',
     pendingTitle: 'Waiting for your teacher',
     pendingBody: "Your written answers were sent to your teacher. Your final score shows up here as soon as they're graded.",
     pendingSoFar: (earned: number, total: number) => `${earned} of ${total} points so far (not counting essays)`,
     pendingBadge: 'Waiting for grading',
+    photoAttached: 'Solution photo attached',
     graded: 'Graded',
     teacherComment: "Teacher's comment:",
     yourAnswer: 'Your answer:',
@@ -200,6 +204,10 @@ export default function ExamScreen() {
   const [session, setSession] = useState<ExamStartResult | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<string[]>([]);
+  // Displayable photo for each photo-answered essay question (local file
+  // right after taking it, or a signed link when resuming).
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   const [result, setResult] = useState<ExamSubmitResult | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -269,6 +277,7 @@ export default function ExamScreen() {
       setSession(s);
       setAnswers(s.saved_answers ?? {});
       setFlagged(s.flagged_question_ids ?? []);
+      setPhotoPreviews(s.saved_answer_images ?? {});
       setResult(null);
       setTimedOut(false);
       submittingRef.current = false;
@@ -396,7 +405,11 @@ export default function ExamScreen() {
             const answered = isAnswered(answers, q.id);
             const isFlagged = flagged.includes(q.id);
             const answerText =
-              q.question_type === 'multiple_choice' && q.choices ? q.choices[answers[q.id]] ?? '' : answers[q.id] ?? '';
+              q.question_type === 'multiple_choice' && q.choices
+                ? q.choices[answers[q.id]] ?? ''
+                : (answers[q.id] ?? '').startsWith('b2:')
+                  ? t.photoAttached
+                  : answers[q.id] ?? '';
             return (
               <Animated.View key={q.id} entering={enterStagger(i, 80)}>
                 <PressableScale
@@ -547,17 +560,22 @@ export default function ExamScreen() {
               ) : q.question_type === 'essay' ? (
                 <View>
                   <Text style={styles.essayNote}>{t.essayNote}</Text>
-                  <TextInput
-                    style={[styles.textInput, styles.essayInput]}
-                    placeholder={t.essayPlaceholder}
-                    placeholderTextColor={colors.textFaint}
+                  <PhotoAnswer
+                    attemptId={session.attempt_id}
+                    questionId={q.id}
                     value={answers[q.id] ?? ''}
-                    onChangeText={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))}
-                    multiline
-                    maxLength={5000}
-                    textAlignVertical="top"
+                    previewUri={photoPreviews[q.id] ?? null}
+                    language={language}
+                    onChange={(answer, preview) => {
+                      setAnswers((prev) => ({ ...prev, [q.id]: answer }));
+                      setPhotoPreviews((prev) => {
+                        const next = { ...prev };
+                        if (preview) next[q.id] = preview;
+                        else delete next[q.id];
+                        return next;
+                      });
+                    }}
                   />
-                  <Text style={styles.charCount}>{(answers[q.id] ?? '').length}/5000</Text>
                 </View>
               ) : (
                 <TextInput
@@ -680,7 +698,12 @@ export default function ExamScreen() {
                     </Text>
                   </View>
                   )}
-                  {a.question_type === 'essay' && a.submitted_answer ? (
+                  {a.question_type === 'essay' && a.answer_image_url ? (
+                    <Pressable onPress={() => setZoomUrl(a.answer_image_url ?? null)} accessibilityRole="imagebutton">
+                      <Text style={styles.essayAnswerLabel}>{t.yourAnswer}</Text>
+                      <Image source={{ uri: a.answer_image_url }} style={styles.answerPhoto} resizeMode="contain" />
+                    </Pressable>
+                  ) : a.question_type === 'essay' && a.submitted_answer && !a.submitted_answer.startsWith('b2:') ? (
                     <View style={styles.essayAnswerBox}>
                       <Text style={styles.essayAnswerLabel}>{t.yourAnswer}</Text>
                       <Text style={styles.essayAnswerText}>{a.submitted_answer}</Text>
@@ -723,6 +746,7 @@ export default function ExamScreen() {
             </PressableScale>
           </View>
         </ScrollView>
+        <ImageViewerModal visible={!!zoomUrl} url={zoomUrl} onClose={() => setZoomUrl(null)} />
       </View>
     );
   }
@@ -983,6 +1007,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
   },
   essayAnswerLabel: { color: colors.textFaint, fontFamily: fonts.bold, fontSize: 11 },
+  answerPhoto: { width: '100%', aspectRatio: 0.8, borderRadius: radius.md, backgroundColor: colors.surfaceAlt, marginTop: 4 },
   essayAnswerText: { color: colors.text, fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20 },
   commentBox: {
     flexDirection: 'row',

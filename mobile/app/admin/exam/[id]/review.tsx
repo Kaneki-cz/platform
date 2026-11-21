@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 
+import { ImageViewerModal } from '@/components/ImageViewerModal';
 import { MathText } from '@/components/MathText';
 import { PressableScale, Skeleton } from '@/components/motion';
 import { ResolvedImage } from '@/components/ResolvedImage';
@@ -141,6 +142,7 @@ function ReviewCard({
   const [points, setPoints] = useState<number | null>(item.points_awarded);
   const [comment, setComment] = useState(item.teacher_comment ?? '');
   const [showModel, setShowModel] = useState(false);
+  const [zoom, setZoom] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const options = Array.from({ length: Math.min(item.max_points, 10) + 1 }, (_, i) => i);
@@ -184,10 +186,23 @@ function ReviewCard({
         <ResolvedImage url={item.image_url} style={styles.image} containerStyle={styles.image} resizeMode="contain" />
       ) : null}
 
-      <View style={styles.answerBox}>
-        <Text style={styles.answerLabel}>Student's answer</Text>
-        <MathText text={item.submitted_answer} color={colors.text} fontSize={15} />
-      </View>
+      {item.answer_image_url ? (
+        <Pressable onPress={() => setZoom(true)} accessibilityRole="imagebutton" accessibilityLabel="Open the student's solution photo">
+          <Text style={styles.answerLabel}>Student's solution (tap to zoom)</Text>
+          <Image source={{ uri: item.answer_image_url }} style={styles.answerPhoto} resizeMode="contain" />
+        </Pressable>
+      ) : item.submitted_answer.startsWith('b2:') ? (
+        <View style={styles.answerBox}>
+          <Text style={styles.answerLabel}>Student's solution</Text>
+          <Text style={styles.empty}>The photo link couldn't be loaded — pull to refresh.</Text>
+        </View>
+      ) : (
+        <View style={styles.answerBox}>
+          <Text style={styles.answerLabel}>Student's answer</Text>
+          <MathText text={item.submitted_answer} color={colors.text} fontSize={15} />
+        </View>
+      )}
+      <ImageViewerModal visible={zoom} url={item.answer_image_url} onClose={() => setZoom(false)} />
 
       {item.model_answer ? (
         <Pressable style={styles.modelToggle} onPress={() => setShowModel((v) => !v)} hitSlop={6}>
@@ -315,6 +330,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
   },
   answerLabel: { color: colors.textFaint, fontFamily: fonts.bold, fontSize: 11, marginBottom: 4 },
+  answerPhoto: { width: '100%', aspectRatio: 0.75, borderRadius: radius.md, backgroundColor: colors.surfaceAlt },
   modelToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
   modelToggleText: { color: colors.primary, fontFamily: fonts.semiBold, fontSize: 12.5 },
   modelBox: { backgroundColor: `${colors.success}12`, borderRadius: radius.md, padding: spacing.sm },

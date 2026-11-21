@@ -38,6 +38,8 @@ VIDEO_KEY_PREFIX = "videos/"
 # below are already fully generic over object_key, so no other change was
 # needed here to support images.
 IMAGE_KEY_PREFIX = "images/"
+# Students' photographed exam answers: answers/<attempt_id>/<question_id>-<uuid>.<ext>
+ANSWER_KEY_PREFIX = "answers/"
 # Marks a Lesson.video_url / TeacherProfile.photo_url / Course.cover_image_url
 # value as "a B2 object key, not a real URL" — see resolveVideoUrl /
 # resolveFileUrl on the mobile side (lib/api.ts), which branches on this

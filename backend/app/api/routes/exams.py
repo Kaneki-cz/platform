@@ -14,6 +14,7 @@ is answered all at once and graded as a whole, with a server-anchored
 timer between start and submit.
 """
 import random
+from pathlib import Path
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -27,7 +28,7 @@ from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
-from app.services import activity
+from app.services import activity, b2_storage
 from app.schemas.exam import (
     ExamAnswerResult,
     ExamAttemptRow,
@@ -48,6 +49,8 @@ from app.schemas.exam import (
     ReviewIn,
     ReviewItem,
     ReviewResult,
+    AnswerPhotoUploadIn,
+    AnswerPhotoUploadOut,
 )
 
 router = APIRouter(prefix="/api/v1/exams", tags=["exams"])
@@ -111,6 +114,8 @@ def _finalize_attempt(
         if not submitted:
             continue
         if question.question_type == ESSAY:
+            if submitted.startswith(b2_storage.B2_URL_SCHEME) and not _is_own_answer_photo(attempt, submitted):
+                continue  # someone else's file — treat as unanswered
             pending = True
             db.add(
                 QuestionAttempt(
@@ -163,6 +168,23 @@ def _finalize_attempt(
     return _build_result(db, attempt, exam)
 
 
+IMAGE_EXTENSIONS = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def _is_own_answer_photo(attempt: ExamAttempt, value: str | None) -> bool:
+    return bool(value) and value.startswith(f"{b2_storage.B2_URL_SCHEME}{b2_storage.ANSWER_KEY_PREFIX}{attempt.id}/")
+
+
+def _answer_image_url(attempt: ExamAttempt, value: str | None) -> str | None:
+    # A signed view link for a photo answer belonging to this attempt.
+    if not _is_own_answer_photo(attempt, value) or not b2_storage.b2_configured():
+        return None
+    try:
+        return b2_storage.generate_signed_video_url(value[len(b2_storage.B2_URL_SCHEME):])
+    except Exception:  # noqa: BLE001 - a missing link must not break the result screen
+        return None
+
+
 def _build_result(db: Session, attempt: ExamAttempt, exam: Exam) -> ExamSubmitResult:
     """The result screen for a submitted attempt, rebuilt from what's stored
     — used right after submitting and when a student reopens an old one
@@ -192,6 +214,7 @@ def _build_result(db: Session, attempt: ExamAttempt, exam: Exam) -> ExamSubmitRe
                 pending_review=bool(row and row.needs_review),
                 teacher_comment=row.teacher_comment if row else None,
                 submitted_answer=row.submitted_answer if row else None,
+                answer_image_url=_answer_image_url(attempt, row.submitted_answer) if row else None,
             )
         )
     return ExamSubmitResult(
@@ -703,6 +726,11 @@ def start_exam(
         server_now=_now(),
         saved_answers=attempt.draft_answers or {},
         flagged_question_ids=attempt.flagged_questions or [],
+        saved_answer_images={
+            qid: url
+            for qid, value in (attempt.draft_answers or {}).items()
+            if (url := _answer_image_url(attempt, value))
+        },
     )
 
 
@@ -812,6 +840,7 @@ def list_reviews(
             model_answer=question.correct_answer or None,
             max_points=question.points or 1,
             submitted_answer=qa.submitted_answer,
+            answer_image_url=_answer_image_url(attempt, qa.submitted_answer),
             submitted_at=attempt.submitted_at,
             points_awarded=qa.points_awarded,
             teacher_comment=qa.teacher_comment,
@@ -864,3 +893,37 @@ def review_answer(
         attempt_score_percent=attempt.score_percent,
         attempt_passed=None if attempt.pending_review else attempt.passed,
     )
+
+
+@router.post("/attempts/{attempt_id}/answer-photo", response_model=AnswerPhotoUploadOut)
+def create_answer_photo_upload(
+    attempt_id: uuid.UUID,
+    payload: AnswerPhotoUploadIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AnswerPhotoUploadOut:
+    """Upload link for a photo of a handwritten solution to one essay
+    question, on the student's own still-open attempt. The resulting
+    file_url is only accepted as an answer on this same attempt."""
+    attempt, exam = _own_open_attempt(db, attempt_id, current_user)
+    if _is_expired(attempt, exam):
+        _finalize_attempt(db, attempt, exam, attempt.draft_answers or {}, auto=True)
+        raise HTTPException(status_code=409, detail="time_up")
+    question = db.get(Question, payload.question_id)
+    if not question or question.exam_id != exam.id or question.question_type != ESSAY:
+        raise HTTPException(status_code=400, detail="Photos can only answer this exam's essay questions.")
+
+    ext = Path(payload.file_name).suffix.lower() or ".jpg"
+    if ext not in IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Send the photo as JPG, PNG or WEBP.")
+    if not b2_storage.b2_configured():
+        raise HTTPException(status_code=503, detail="Photo storage is not configured on this server.")
+
+    key = f"{b2_storage.ANSWER_KEY_PREFIX}{attempt.id}/{question.id}-{uuid.uuid4().hex}{ext}"
+    content_type = IMAGE_EXTENSIONS[ext]
+    try:
+        upload_url = b2_storage.generate_upload_url(key, content_type)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Could not prepare upload: {e}") from e
+    return AnswerPhotoUploadOut(upload_url=upload_url, content_type=content_type, file_url=f"{b2_storage.B2_URL_SCHEME}{key}")
+
