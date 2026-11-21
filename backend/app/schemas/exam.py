@@ -207,3 +207,43 @@ class ExamAttemptsOut(BaseModel):
 
 
 ExamStatusOut.model_rebuild()
+
+
+class ChoiceCount(BaseModel):
+    answer: str
+    label: str | None = None
+    count: int
+
+
+class QuestionAnalytics(BaseModel):
+    """How one question performed across every submitted attempt."""
+
+    question_id: uuid.UUID
+    prompt: str
+    question_type: str
+    correct_answer: str
+    correct_answer_label: str | None = None
+    correct_count: int
+    answered_count: int
+    # correct_count / every submitted attempt (an unanswered question counts
+    # as wrong, same as in grading).
+    correct_rate: float
+    most_common_wrong: ChoiceCount | None = None
+    # Multiple-choice only: how many attempts picked each option, in the
+    # question's own option order.
+    choice_counts: list[ChoiceCount] = []
+
+
+class ExamAnalyticsOut(BaseModel):
+    """Teacher-facing summary of an exam: overall results plus per-question
+    difficulty, hardest question first."""
+
+    exam_id: uuid.UUID
+    exam_title: str
+    passing_percent: int
+    attempt_count: int
+    student_count: int
+    pass_rate: float | None = None
+    average_score: float | None = None
+    average_duration_seconds: float | None = None
+    questions: list[QuestionAnalytics] = []

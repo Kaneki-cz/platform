@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -231,21 +232,34 @@ export default function ManageCourseExamsScreen() {
               onPress={() => router.push(`/admin/exam/${exam.id}`)}
               hitSlop={6}
             >
-              <Text style={styles.actionButtonQuestionsText}>📋 Questions</Text>
+              <Ionicons name="list-outline" size={14} color={colors.primary} />
+              <Text style={styles.actionButtonQuestionsText}>Questions</Text>
             </Pressable>
             <Pressable
               style={[styles.actionButton, styles.actionButtonAttempts]}
               onPress={() => router.push(`/admin/exam/${exam.id}/attempts`)}
               hitSlop={6}
             >
-              <Text style={styles.actionButtonAttemptsText}>📊 Attempts</Text>
+              <Ionicons name="people-outline" size={14} color={colors.violet} />
+              <Text style={styles.actionButtonAttemptsText}>Attempts</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionButton, styles.actionButtonStats]}
+              onPress={() => router.push(`/admin/exam/${exam.id}/analytics`)}
+              hitSlop={6}
+              accessibilityRole="button"
+            >
+              <Ionicons name="bar-chart-outline" size={14} color={colors.accent} />
+              <Text style={styles.actionButtonStatsText}>Stats</Text>
             </Pressable>
             <Pressable
               style={[styles.actionButton, styles.actionButtonDelete]}
               onPress={() => onDeleteExam(exam)}
               hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete ${exam.title}`}
             >
-              <Text style={styles.actionButtonDeleteText}>🗑 Delete</Text>
+              <Ionicons name="trash-outline" size={14} color={colors.danger} />
             </Pressable>
           </View>
         </Pressable>
@@ -482,15 +496,21 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
     borderRadius: radius.sm,
     paddingVertical: 8,
     alignItems: 'center',
+    minHeight: 36,
   },
   actionButtonQuestions: { backgroundColor: colors.primary + '1F' },
   actionButtonQuestionsText: { color: colors.primary, fontSize: 12.5, fontFamily: fonts.bold },
   actionButtonAttempts: { backgroundColor: colors.violet + '1F' },
   actionButtonAttemptsText: { color: colors.violet, fontSize: 12.5, fontFamily: fonts.bold },
-  actionButtonDelete: { backgroundColor: colors.dangerSurface },
+  actionButtonStats: { backgroundColor: colors.accent + '1F' },
+  actionButtonStatsText: { color: colors.accent, fontSize: 12.5, fontFamily: fonts.bold },
+  actionButtonDelete: { backgroundColor: colors.dangerSurface, flex: 0, paddingHorizontal: 12 },
   actionButtonDeleteText: { color: colors.danger, fontSize: 12.5, fontFamily: fonts.bold },
 
   empty: { color: colors.textFaint, marginVertical: 20, fontFamily: fonts.regular },

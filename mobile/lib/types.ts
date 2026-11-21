@@ -758,3 +758,35 @@ export interface ExamSubmitResult {
   answers_revealed?: boolean;
   auto_submitted?: boolean;
 }
+
+// Teacher exam analytics (GET /api/v1/exams/{id}/analytics).
+export interface ChoiceCount {
+  answer: string;
+  label: string | null;
+  count: number;
+}
+
+export interface QuestionAnalytics {
+  question_id: string;
+  prompt: string;
+  question_type: QuestionType;
+  correct_answer: string;
+  correct_answer_label: string | null;
+  correct_count: number;
+  answered_count: number;
+  correct_rate: number; // 0..1, unanswered counts as wrong
+  most_common_wrong: ChoiceCount | null;
+  choice_counts: ChoiceCount[];
+}
+
+export interface ExamAnalytics {
+  exam_id: string;
+  exam_title: string;
+  passing_percent: number;
+  attempt_count: number;
+  student_count: number;
+  pass_rate: number | null;
+  average_score: number | null;
+  average_duration_seconds: number | null;
+  questions: QuestionAnalytics[]; // hardest first
+}

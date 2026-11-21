@@ -30,6 +30,7 @@ from app.models.user import User
 from app.schemas.exam import (
     ExamAnswerResult,
     ExamAttemptRow,
+    ExamAnalyticsOut,
     ExamAttemptsOut,
     ExamCreate,
     ExamDraftIn,
@@ -41,6 +42,8 @@ from app.schemas.exam import (
     ExamSubmitRequest,
     ExamSubmitResult,
     ExamUpdate,
+    ChoiceCount,
+    QuestionAnalytics,
 )
 
 router = APIRouter(prefix="/api/v1/exams", tags=["exams"])
@@ -392,6 +395,88 @@ def list_exam_attempts(
         exam_title=exam.title,
         question_count=question_count,
         attempts=attempts,
+    )
+
+
+@router.get("/{exam_id}/analytics", response_model=ExamAnalyticsOut)
+def exam_analytics(
+    exam_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> ExamAnalyticsOut:
+    """Overall results and per-question difficulty for one exam, built from
+    submitted attempts only. Same access rule as the attempts list."""
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    ensure_can_manage_course(db, current_user, exam.course_id)
+
+    attempts = (
+        db.query(ExamAttempt)
+        .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.submitted_at.isnot(None))
+        .all()
+    )
+    total = len(attempts)
+    questions = db.query(Question).filter(Question.exam_id == exam_id).all()
+
+    answers_by_question: dict[uuid.UUID, list[QuestionAttempt]] = {q.id: [] for q in questions}
+    if attempts:
+        rows = (
+            db.query(QuestionAttempt)
+            .filter(QuestionAttempt.exam_attempt_id.in_([a.id for a in attempts]))
+            .all()
+        )
+        for row in rows:
+            answers_by_question.setdefault(row.question_id, []).append(row)
+
+    def label_for(q: Question, answer: str) -> str | None:
+        if isinstance(q.choices, dict):
+            for key, text in q.choices.items():
+                if key.strip().lower() == answer.strip().lower():
+                    return text
+        return None
+
+    per_question: list[QuestionAnalytics] = []
+    for q in questions:
+        rows = answers_by_question.get(q.id, [])
+        correct = sum(1 for r in rows if r.is_correct)
+        counts: dict[str, int] = {}
+        for r in rows:
+            key = r.submitted_answer.strip()
+            counts[key] = counts.get(key, 0) + 1
+        wrong = [(k, c) for k, c in counts.items() if k.lower() != q.correct_answer.strip().lower()]
+        wrong.sort(key=lambda kc: -kc[1])
+        choice_counts: list[ChoiceCount] = []
+        if isinstance(q.choices, dict):
+            lowered = {k.lower(): c for k, c in counts.items()}
+            choice_counts = [ChoiceCount(answer=k, label=v, count=lowered.get(k.lower(), 0)) for k, v in q.choices.items()]
+        per_question.append(
+            QuestionAnalytics(
+                question_id=q.id,
+                prompt=q.prompt,
+                question_type=q.question_type,
+                correct_answer=q.correct_answer,
+                correct_answer_label=label_for(q, q.correct_answer),
+                correct_count=correct,
+                answered_count=len(rows),
+                correct_rate=(correct / total) if total else 0.0,
+                most_common_wrong=ChoiceCount(answer=wrong[0][0], label=label_for(q, wrong[0][0]), count=wrong[0][1]) if wrong else None,
+                choice_counts=choice_counts,
+            )
+        )
+    per_question.sort(key=lambda qa: (qa.correct_rate, -qa.answered_count))
+
+    durations = [a.duration_seconds for a in attempts if a.duration_seconds is not None]
+    return ExamAnalyticsOut(
+        exam_id=exam.id,
+        exam_title=exam.title,
+        passing_percent=exam.passing_percent,
+        attempt_count=total,
+        student_count=len({a.user_id for a in attempts}),
+        pass_rate=(sum(1 for a in attempts if a.passed) / total) if total else None,
+        average_score=(sum(a.score_percent or 0 for a in attempts) / total) if total else None,
+        average_duration_seconds=(sum(durations) / len(durations)) if durations else None,
+        questions=per_question,
     )
 
 

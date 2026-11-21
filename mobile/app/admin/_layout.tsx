@@ -25,6 +25,7 @@ export default function AdminLayout() {
       <Stack.Screen name="course/[id]/report" options={{ title: 'Student Report' }} />
       <Stack.Screen name="lesson/[id]" options={{ title: 'Quiz Questions' }} />
       <Stack.Screen name="exam/[id]" options={{ title: 'Exam Questions' }} />
+      <Stack.Screen name="exam/[id]/analytics" options={{ title: 'Exam Analytics' }} />
       <Stack.Screen name="attendance/[groupId]" options={{ title: 'Scan Attendance' }} />
       <Stack.Screen name="groups" options={{ title: 'My Groups' }} />
     </Stack>

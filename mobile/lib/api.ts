@@ -16,6 +16,7 @@ import type {
   ExamAdmin,
   ExamAnswerSubmit,
   ExamAttemptRow,
+  ExamAnalytics,
   ExamAttemptsData,
   ExamCreateInput,
   ExamStartResult,
@@ -739,6 +740,12 @@ export function listCourseExams(courseId: string) {
 /** Instructor/admin. Every completed sitting of one exam — the
  * teacher-facing "grades" view (app/admin/exam/[id]/attempts.tsx and the
  * per-chapter student report at app/admin/course/[id]/report.tsx). */
+/** Instructor/admin. Overall results + per-question difficulty for one
+ * exam, hardest question first. */
+export function getExamAnalytics(examId: string) {
+  return request<ExamAnalytics>(`/api/v1/exams/${examId}/analytics`);
+}
+
 export function getExamAttempts(examId: string) {
   return request<ExamAttemptsData>(`/api/v1/exams/${examId}/attempts`);
 }
