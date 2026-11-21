@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 
 import * as api from '@/lib/api';
 import { loadApiBaseUrlOverride } from '@/lib/config';
+import { onSessionExpired } from '@/lib/session';
 import type { User } from '@/lib/types';
 
 interface AuthContextValue {
@@ -25,6 +27,29 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Login expired mid-session: drop back to the login screen once, with a
+  // message, instead of letting every screen fail.
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        // Several requests can fail at once; only the first one (while a
+        // user is still signed in) shows the message.
+        if (userRef.current) {
+          userRef.current = null;
+          Alert.alert(
+            'انتهت جلسة الدخول — Session expired',
+            'سجّل دخول تاني عشان تكمّل.\nPlease log in again to continue.',
+          );
+        }
+        setUser(null);
+      }),
+    [],
+  );
 
   useEffect(() => {
     (async () => {

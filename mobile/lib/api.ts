@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { getApiBaseUrl } from './config';
 import { setOffline } from './network';
+import { notifySessionExpired } from './session';
 import type {
   AskResponse,
   AttendanceScanResult,
@@ -302,10 +303,12 @@ async function request<T>(
     ...(headers as Record<string, string> | undefined),
   };
 
+  let sentToken = false;
   if (auth) {
     const token = await getToken();
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
+      sentToken = true;
     }
   }
 
@@ -318,6 +321,13 @@ async function request<T>(
     throw e;
   }
   setOffline(false);
+
+  if (res.status === 401 && sentToken) {
+    // The saved login was rejected (expired or revoked) — sign out once and
+    // let the app show the login screen; see lib/session.ts.
+    await setToken(null);
+    notifySessionExpired();
+  }
 
   if (!res.ok) {
     let detail = res.statusText;
