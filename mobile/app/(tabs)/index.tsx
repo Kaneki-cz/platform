@@ -199,8 +199,9 @@ function Stat({ value, label, color }: { value: number; label: string; color: st
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  // Bottom padding clears the floating tab bar (see AppTabBar).
-  listContent: { padding: spacing.xl, paddingBottom: 120 },
+  // The tab bar sits below the screen in the layout (not over it), so only
+  // normal breathing room is needed at the bottom.
+  listContent: { padding: spacing.xl, paddingBottom: spacing.xxl },
   greeting: { fontSize: 24, fontFamily: fonts.bold, color: colors.text },
   subtitle: { color: colors.textMuted, marginTop: 2, fontFamily: fonts.regular },
 

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -104,7 +105,7 @@ export default function AdminHomeScreen() {
 
           <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/users')}>
             <View style={styles.utilityIconWrap}>
-              <Text style={styles.utilityIcon}>🎚️</Text>
+              <Ionicons name="options-outline" size={22} color={colors.accent} />
             </View>
             <View style={styles.utilityTextWrap}>
               <Text style={styles.utilityTitle}>AI Question Limits</Text>
@@ -115,7 +116,7 @@ export default function AdminHomeScreen() {
 
           <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/video-views')}>
             <View style={styles.utilityIconWrap}>
-              <Text style={styles.utilityIcon}>🔒</Text>
+              <Ionicons name="lock-closed-outline" size={22} color={colors.accent} />
             </View>
             <View style={styles.utilityTextWrap}>
               <Text style={styles.utilityTitle}>Video View Limits</Text>
@@ -126,7 +127,7 @@ export default function AdminHomeScreen() {
 
           <Scalable style={[styles.utilityCard, styles.utilityCardLast]} onPress={() => router.push('/admin/students')}>
             <View style={styles.utilityIconWrap}>
-              <Text style={styles.utilityIcon}>🧑‍🎓</Text>
+              <Ionicons name="school-outline" size={22} color={colors.accent} />
             </View>
             <View style={styles.utilityTextWrap}>
               <Text style={styles.utilityTitle}>Student Enrollments</Text>
@@ -155,7 +156,7 @@ export default function AdminHomeScreen() {
               app/admin/groups.tsx and GET /api/v1/teachers/mine. */}
           <Scalable style={styles.utilityCard} onPress={() => router.push('/admin/groups')}>
             <View style={styles.utilityIconWrap}>
-              <Text style={styles.utilityIcon}>👥</Text>
+              <Ionicons name="people-outline" size={22} color={colors.accent} />
             </View>
             <View style={styles.utilityTextWrap}>
               <Text style={styles.utilityTitle}>My Groups</Text>
@@ -211,8 +212,10 @@ export default function AdminHomeScreen() {
                 style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
                 onPress={() => onDelete(item.id, item.name)}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${item.name}`}
               >
-                <Text style={styles.deleteButtonIcon}>🗑️</Text>
+                <Ionicons name="trash-outline" size={17} color={colors.danger} />
               </Pressable>
             </View>
           )}
@@ -297,7 +300,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  utilityIcon: { fontSize: 22 },
   utilityTextWrap: { flex: 1 },
   utilityTitle: { color: colors.text, fontWeight: '700', fontSize: 15 },
   utilitySubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
@@ -341,9 +343,9 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   cardArrow: { fontSize: 20, color: colors.textFaint, marginRight: 12 },
   deleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.dangerSurface,
     borderWidth: 1,
     borderColor: colors.danger + '55',
@@ -352,6 +354,5 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   deleteButtonPressed: { opacity: 0.75 },
-  deleteButtonIcon: { fontSize: 15 },
   empty: { color: colors.textFaint, textAlign: 'center', marginTop: 40, lineHeight: 20 },
 });

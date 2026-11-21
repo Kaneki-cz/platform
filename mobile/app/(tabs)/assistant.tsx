@@ -8,7 +8,6 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -27,7 +26,9 @@ import {
 import { MathText } from '@/components/MathText';
 import { VisualizationRenderer } from '@/components/visualizations/VisualizationRenderer';
 import { useLanguage, type Language } from '@/context/LanguageContext';
-import { colors, gradientBrand, radius, spacing } from '@/constants/theme';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+
+import { colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
 import type { AskResponse, UsageInfo, VisualizationPayload } from '@/lib/types';
 
 // expo-clipboard ships its own native module (ExpoClipboard) that has to be
@@ -184,10 +185,10 @@ const STRINGS: Record<
 // The app talks ONLY to our backend's /api/v1/ai/ask — never directly to
 // Qwen. See the plan's "Important Security Rule".
 export default function AssistantScreen() {
-  // Shared with every other student-facing screen (see
-  // context/LanguageContext.tsx) — switching it here or on the Profile tab
-  // updates both immediately, since they read from the same value.
-  const { language, toggleLanguage } = useLanguage();
+  // Fixed app-wide (see context/LanguageContext.tsx); there's no in-app
+  // language switch anymore.
+  const { language } = useLanguage();
+  const headerHeight = useHeaderHeight();
   const t = STRINGS[language];
 
   const [messages, setMessages] = useState<DisplayMessage[]>(() => [
@@ -411,8 +412,8 @@ export default function AssistantScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      behavior="padding"
+      keyboardVerticalOffset={headerHeight}
     >
       <View style={styles.topBar}>
         <View style={[styles.usageBadge, atLimit && styles.usageBadgeAtLimit]}>
@@ -430,9 +431,6 @@ export default function AssistantScreen() {
           <Pressable style={styles.newChatButton} onPress={onNewChat} hitSlop={8}>
             <Ionicons name="add-circle" size={16} color={colors.primary} style={styles.newChatIcon} />
             <Text style={styles.newChatText}>{t.newChat}</Text>
-          </Pressable>
-          <Pressable style={styles.langButton} onPress={toggleLanguage} hitSlop={8}>
-            <Text style={styles.langButtonText}>{language === 'ar' ? 'EN' : 'ع'}</Text>
           </Pressable>
         </View>
       </View>
@@ -524,7 +522,13 @@ export default function AssistantScreen() {
       ) : null}
 
       <View style={styles.inputRow}>
-        <Pressable style={styles.attachButton} onPress={onPickImage} disabled={sending}>
+        <Pressable
+          style={styles.attachButton}
+          onPress={onPickImage}
+          disabled={sending}
+          accessibilityRole="button"
+          accessibilityLabel={t.attachSheetTitle}
+        >
           <Ionicons name="scan-outline" size={20} color={colors.textMuted} />
         </Pressable>
         <TextInput
@@ -573,18 +577,9 @@ const styles = StyleSheet.create({
   },
   usageBadgeAtLimit: { backgroundColor: colors.dangerSurface, borderColor: colors.danger },
   usageIcon: { marginRight: 1 },
-  usageText: { color: colors.textMuted, fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  usageText: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.semiBold, flexShrink: 1 },
   usageTextAtLimit: { color: colors.danger },
   topBarActions: { flexDirection: 'row', alignItems: 'center' },
-  langButton: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    marginLeft: spacing.sm,
-  },
-  langButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   newChatButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -597,7 +592,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   newChatIcon: { marginRight: 1 },
-  newChatText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  newChatText: { color: colors.primary, fontSize: 13, fontFamily: fonts.semiBold },
   bubble: { borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, maxWidth: '90%' },
   userBubble: { alignSelf: 'flex-end' },
   assistantBubble: {
@@ -621,7 +616,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  bubbleActionText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  bubbleActionText: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.semiBold },
   typingBubble: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   typingText: { color: colors.textMuted, fontSize: 14 },
   attachedRow: {

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -293,7 +294,7 @@ export default function ChapterLecturesScreen() {
                   resizeMode="contain"
                   fallback={
                     <View style={[styles.posterCover, styles.photoPlaceholder]}>
-                      <Text style={styles.photoPlaceholderText}>🎬</Text>
+                      <Ionicons name="film-outline" size={28} color={colors.textFaint} />
                     </View>
                   }
                 />
@@ -453,7 +454,6 @@ const styles = StyleSheet.create({
   posterCover: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   // Fallback tile for a lecture with no cover image yet.
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
-  photoPlaceholderText: { fontSize: 28 },
   posterScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
   posterIndexBadge: {
     position: 'absolute',

@@ -1,6 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import {
   getEnrollmentStatus,
@@ -14,10 +16,11 @@ import {
 import { EnrollmentModal } from '@/components/EnrollmentModal';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LessonVideoPlayer, type LessonVideoPlayerHandle } from '@/components/LessonVideoPlayer';
+import { Skeleton } from '@/components/motion';
 import { SegmentQuiz } from '@/components/SegmentQuiz';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { colors, spacing } from '@/constants/theme';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
 import type { EnrollmentStatus, LessonDetail, Question } from '@/lib/types';
 
 // Don't bother persisting the first few seconds of playback — avoids a
@@ -32,16 +35,34 @@ const PASS_THRESHOLD = 0.75;
 // This screen is student-facing, so its UI text follows the app-wide
 // Arabic/English toggle (see context/LanguageContext.tsx) — unlike the
 // admin screens, which stay English on purpose.
-const STRINGS: Record<'ar' | 'en', { limitReached: string; viewsLabel: (used: number, allowed: number) => string; contactHint: string }> = {
+type LessonStrings = {
+  limitReached: string;
+  viewsLabel: (used: number, allowed: number) => string;
+  contactHint: string;
+  loadFailed: string;
+  videoFailed: string;
+  retry: string;
+  checkpoints: (passed: number, total: number) => string;
+};
+
+const STRINGS: Record<'ar' | 'en', LessonStrings> = {
   ar: {
     limitReached: 'لقد استنفذت عدد المشاهدات المسموح بها لهذا الفيديو',
     viewsLabel: (used, allowed) => `المشاهدات: ${used}/${allowed}`,
     contactHint: 'تواصل مع المدرس أو الأدمن لو محتاج مشاهدات إضافية.',
+    loadFailed: 'مقدرناش نحمّل المحاضرة. اتأكد من النت وجرّب تاني.',
+    videoFailed: 'الفيديو مااشتغلش. اتأكد من النت وجرّب تاني.',
+    retry: 'جرّب تاني',
+    checkpoints: (passed, total) => `نقط الأسئلة: عدّيت ${passed} من ${total}`,
   },
   en: {
     limitReached: "You've used up all the allowed views for this video",
     viewsLabel: (used, allowed) => `Views: ${used}/${allowed}`,
     contactHint: 'Contact your teacher or an admin if you need extra views.',
+    loadFailed: "Couldn't load this lecture. Check your connection and try again.",
+    videoFailed: "The video didn't load. Check your connection and try again.",
+    retry: 'Try again',
+    checkpoints: (passed, total) => `Checkpoints: ${passed} of ${total} passed`,
   },
 };
 
@@ -108,6 +129,10 @@ export default function LessonScreen() {
   // request indistinguishable from a genuine crash. Now shows *something*
   // either way, so a report can say which one it actually is.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the retry buttons to re-run the matching fetch below.
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [videoAttempt, setVideoAttempt] = useState(0);
+  const [videoError, setVideoError] = useState(false);
 
   // useFocusEffect (not useEffect) so re-opening a lesson (e.g. after an
   // instructor edits it) picks up fresh content without a full app reload.
@@ -122,6 +147,7 @@ export default function LessonScreen() {
       setEnrollmentStatus(null);
       setShowEnrollment(false);
       setLoadError(null);
+      setVideoError(false);
       getLesson(id)
         .then((l) => {
           setLesson(l);
@@ -139,7 +165,7 @@ export default function LessonScreen() {
       getLessonQuestions(id)
         .then(setQuestions)
         .catch(() => {});
-    }, [id]),
+    }, [id, loadAttempt]),
   );
 
   // Check enrollment once lesson data is loaded — students only, and only
@@ -167,17 +193,21 @@ export default function LessonScreen() {
   useEffect(() => {
     if (!lesson?.video_url) return undefined;
     let cancelled = false;
+    setVideoError(false);
     resolveVideoUrl(lesson.video_url, id)
       .then((url) => {
         if (!cancelled) setResolvedVideoUrl(url);
       })
       .catch(() => {
-        if (!cancelled) setResolvedVideoUrl(null);
+        if (!cancelled) {
+          setResolvedVideoUrl(null);
+          setVideoError(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [lesson?.video_url]);
+  }, [lesson?.video_url, videoAttempt]);
 
   const segments = useMemo(() => buildSegments(questions, duration), [questions, duration]);
 
@@ -191,6 +221,7 @@ export default function LessonScreen() {
   );
 
   const activeSegmentIndex = segments.findIndex((seg) => !segmentPassed(seg));
+  const passedSegments = segments.filter(segmentPassed).length;
   const nextPauseAtSeconds = activeSegmentIndex >= 0 ? segments[activeSegmentIndex].pauseAtSeconds : null;
 
   // Video lectures report real watch percentage instead — see
@@ -250,11 +281,19 @@ export default function LessonScreen() {
   );
 
   if (!lesson) {
+    if (loadError) {
+      return (
+        <View style={[styles.container, styles.centerFill]}>
+          <RetryNotice message={t.loadFailed} retryLabel={t.retry} onRetry={() => setLoadAttempt((n) => n + 1)} />
+        </View>
+      );
+    }
     return (
-      <View style={[styles.container, styles.centerFill]}>
-        <Text style={loadError ? styles.loadErrorText : styles.loadingText}>
-          {loadError ? `Couldn't load this lecture: ${loadError}` : 'Loading…'}
-        </Text>
+      <View style={[styles.container, { padding: 20 }]}>
+        <Skeleton style={{ height: 26, width: '70%', marginBottom: spacing.lg }} />
+        <Skeleton style={styles.playerSkeleton} />
+        <Skeleton style={{ height: 14, width: '90%', marginTop: spacing.lg }} />
+        <Skeleton style={{ height: 14, width: '75%', marginTop: spacing.sm }} />
       </View>
     );
   }
@@ -262,7 +301,29 @@ export default function LessonScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
-        <Text style={styles.title}>{lesson.title}</Text>
+        <Animated.Text entering={FadeInDown.duration(350)} style={styles.title}>
+          {lesson.title}
+        </Animated.Text>
+
+        {segments.length > 0 && !lesson.view_limit_reached ? (
+          <Animated.View entering={FadeIn.delay(150)} style={styles.checkpoints}>
+            <View style={styles.checkpointsHeader}>
+              <Ionicons name="flag-outline" size={14} color={colors.primary} />
+              <Text style={styles.checkpointsText}>{t.checkpoints(passedSegments, segments.length)}</Text>
+            </View>
+            <View style={styles.checkpointsTrack}>
+              {segments.map((seg, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.checkpointPip,
+                    segmentPassed(seg) ? styles.checkpointPassed : i === activeSegmentIndex ? styles.checkpointActive : null,
+                  ]}
+                />
+              ))}
+            </View>
+          </Animated.View>
+        ) : null}
 
         {lesson.view_limit_reached ? (
           // video_url is already null in this case — the backend won't hand
@@ -291,6 +352,14 @@ export default function LessonScreen() {
               <Text style={styles.viewsMeta}>{t.viewsLabel(lesson.views_used ?? 0, lesson.views_allowed)}</Text>
             ) : null}
           </ErrorBoundary>
+        ) : lesson.video_url ? (
+          videoError ? (
+            <View style={styles.playerError}>
+              <RetryNotice message={t.videoFailed} retryLabel={t.retry} onRetry={() => setVideoAttempt((n) => n + 1)} />
+            </View>
+          ) : (
+            <Skeleton style={styles.playerSkeleton} />
+          )
         ) : null}
 
         {lesson.content ? <Text style={styles.content}>{lesson.content}</Text> : null}
@@ -321,13 +390,66 @@ export default function LessonScreen() {
   );
 }
 
+function RetryNotice({ message, retryLabel, onRetry }: { message: string; retryLabel: string; onRetry: () => void }) {
+  return (
+    <View style={styles.retryBox}>
+      <Ionicons name="cloud-offline-outline" size={30} color={colors.textMuted} />
+      <Text style={styles.retryMessage}>{message}</Text>
+      <Pressable style={styles.retryButton} onPress={onRetry} hitSlop={6} accessibilityRole="button">
+        <Ionicons name="refresh" size={15} color={colors.primary} />
+        <Text style={styles.retryButtonText}>{retryLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centerFill: { alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  loadingText: { color: colors.textMuted, fontSize: 14 },
-  loadErrorText: { color: colors.danger, fontSize: 14, textAlign: 'center' },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.lg, color: colors.text },
-  content: { fontSize: 16, lineHeight: 24, color: colors.text },
+  title: { fontSize: 22, fontFamily: fonts.bold, marginBottom: spacing.md, color: colors.text },
+  content: { fontSize: 16, lineHeight: 26, color: colors.text, fontFamily: fonts.regular, marginTop: spacing.lg },
+  // Matches LessonVideoPlayer's own fixed 220pt height so nothing jumps
+  // when the real player replaces the placeholder.
+  playerSkeleton: { height: 220, borderRadius: radius.lg },
+  playerError: {
+    height: 220,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryBox: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.sm },
+  retryMessage: { color: colors.textMuted, fontSize: 14, textAlign: 'center', fontFamily: fonts.regular, lineHeight: 21 },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: `${colors.primary}59`,
+    minHeight: 44,
+  },
+  retryButtonText: { color: colors.primary, fontFamily: fonts.semiBold, fontSize: 14 },
+  checkpoints: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  checkpointsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  checkpointsText: { color: colors.textMuted, fontSize: 12.5, fontFamily: fonts.medium },
+  checkpointsTrack: { flexDirection: 'row', gap: 4 },
+  checkpointPip: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.surfaceAlt },
+  checkpointPassed: { backgroundColor: colors.success },
+  checkpointActive: { backgroundColor: colors.primary },
   viewsMeta: { fontSize: 12, color: colors.textFaint, marginTop: 6, textAlign: 'right' },
   lockedBox: {
     backgroundColor: colors.surfaceAlt,
@@ -337,7 +459,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.lg,
   },
-  lockedTitle: { fontSize: 16, fontWeight: '700', color: colors.danger, textAlign: 'center' },
+  lockedTitle: { fontSize: 16, fontFamily: fonts.bold, color: colors.danger, textAlign: 'center' },
   lockedMeta: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 8 },
   lockedHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: 8, lineHeight: 17 },
 });
