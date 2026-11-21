@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import {
   ApiError,
@@ -35,6 +35,13 @@ export default function ManageCourseExamsScreen() {
   const [examTitle, setExamTitle] = useState('');
   const [examOrderIndex, setExamOrderIndex] = useState('0');
   const [examPassingPercent, setExamPassingPercent] = useState('75');
+  // Exam rules — blank text means "no limit".
+  const [examTimeLimit, setExamTimeLimit] = useState('');
+  const [examMaxAttempts, setExamMaxAttempts] = useState('');
+  const [examCooldown, setExamCooldown] = useState('');
+  const [examShuffleQuestions, setExamShuffleQuestions] = useState(true);
+  const [examShuffleChoices, setExamShuffleChoices] = useState(true);
+  const [examShowAnswersOnFail, setExamShowAnswersOnFail] = useState(false);
   const [examSubmitting, setExamSubmitting] = useState(false);
   const [examError, setExamError] = useState<string | null>(null);
 
@@ -60,6 +67,12 @@ export default function ManageCourseExamsScreen() {
     setExamTitle('');
     setExamOrderIndex('0');
     setExamPassingPercent('75');
+    setExamTimeLimit('');
+    setExamMaxAttempts('');
+    setExamCooldown('');
+    setExamShuffleQuestions(true);
+    setExamShuffleChoices(true);
+    setExamShowAnswersOnFail(false);
     setExamError(null);
   };
 
@@ -68,6 +81,12 @@ export default function ManageCourseExamsScreen() {
     setExamTitle(exam.title);
     setExamOrderIndex(String(exam.order_index));
     setExamPassingPercent(String(exam.passing_percent));
+    setExamTimeLimit(exam.time_limit_minutes ? String(exam.time_limit_minutes) : '');
+    setExamMaxAttempts(exam.max_attempts ? String(exam.max_attempts) : '');
+    setExamCooldown(exam.retake_cooldown_minutes ? String(exam.retake_cooldown_minutes) : '');
+    setExamShuffleQuestions(exam.shuffle_questions ?? true);
+    setExamShuffleChoices(exam.shuffle_choices ?? true);
+    setExamShowAnswersOnFail(exam.show_answers_on_fail ?? false);
     setExamError(null);
   };
 
@@ -83,6 +102,21 @@ export default function ManageCourseExamsScreen() {
       setExamError('Passing score must be a whole number between 1 and 100.');
       return;
     }
+    const timeLimit = parseOptionalLimit(examTimeLimit);
+    const maxAttempts = parseOptionalLimit(examMaxAttempts);
+    const cooldown = parseOptionalLimit(examCooldown);
+    if (timeLimit === undefined || maxAttempts === undefined || cooldown === undefined) {
+      setExamError('Time limit, attempts and wait time must be whole numbers above 0, or left empty for no limit.');
+      return;
+    }
+    const rules = {
+      time_limit_minutes: timeLimit,
+      max_attempts: maxAttempts,
+      retake_cooldown_minutes: cooldown,
+      shuffle_questions: examShuffleQuestions,
+      shuffle_choices: examShuffleChoices,
+      show_answers_on_fail: examShowAnswersOnFail,
+    };
     setExamSubmitting(true);
     setExamError(null);
     try {
@@ -91,6 +125,7 @@ export default function ManageCourseExamsScreen() {
           title: examTitle.trim(),
           order_index: orderIndex,
           passing_percent: passingPercent,
+          ...rules,
         });
       } else {
         await createExam({
@@ -98,6 +133,7 @@ export default function ManageCourseExamsScreen() {
           title: examTitle.trim(),
           order_index: orderIndex,
           passing_percent: passingPercent,
+          ...rules,
         });
       }
       resetExamForm();
@@ -177,6 +213,15 @@ export default function ManageCourseExamsScreen() {
                 <Text style={styles.chip}>
                   {exam.question_count} question{exam.question_count === 1 ? '' : 's'}
                 </Text>
+                {exam.time_limit_minutes ? <Text style={[styles.chip, styles.chipRule]}>⏱ {exam.time_limit_minutes} min</Text> : null}
+                {exam.max_attempts ? (
+                  <Text style={[styles.chip, styles.chipRule]}>
+                    {exam.max_attempts} attempt{exam.max_attempts === 1 ? '' : 's'}
+                  </Text>
+                ) : null}
+                {exam.retake_cooldown_minutes ? (
+                  <Text style={[styles.chip, styles.chipRule]}>wait {exam.retake_cooldown_minutes} min</Text>
+                ) : null}
               </View>
             </View>
           </View>
@@ -246,6 +291,62 @@ export default function ManageCourseExamsScreen() {
               />
             </View>
           </View>
+
+          <Text style={styles.sectionLabel}>Rules</Text>
+          <View style={styles.examFieldsRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.smallLabel}>Time limit (min)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                placeholder="None"
+                placeholderTextColor={colors.textFaint}
+                value={examTimeLimit}
+                onChangeText={setExamTimeLimit}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.smallLabel}>Max attempts</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                placeholder="Unlimited"
+                placeholderTextColor={colors.textFaint}
+                value={examMaxAttempts}
+                onChangeText={setExamMaxAttempts}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.smallLabel}>Wait between (min)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                placeholder="None"
+                placeholderTextColor={colors.textFaint}
+                value={examCooldown}
+                onChangeText={setExamCooldown}
+              />
+            </View>
+          </View>
+          <ToggleRow
+            label="Shuffle question order"
+            hint="Each student, each attempt gets a different order."
+            value={examShuffleQuestions}
+            onChange={setExamShuffleQuestions}
+          />
+          <ToggleRow
+            label="Shuffle answer choices"
+            hint="Multiple-choice options appear in a different order."
+            value={examShuffleChoices}
+            onChange={setExamShuffleChoices}
+          />
+          <ToggleRow
+            label="Show answers after a failed attempt"
+            hint="Off: correct answers and explanations only show once the student passes."
+            value={examShowAnswersOnFail}
+            onChange={setExamShowAnswersOnFail}
+          />
+
           {examError ? <Text style={styles.error}>{examError}</Text> : null}
           <View style={styles.formActions}>
             {editingExamId ? (
@@ -268,6 +369,42 @@ export default function ManageCourseExamsScreen() {
         </View>
       }
     />
+  );
+}
+
+/** Blank → null (no limit); a positive whole number → that number;
+ * anything else → undefined (invalid). */
+function parseOptionalLimit(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function ToggleRow({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <Pressable style={styles.toggleRow} onPress={() => onChange(!value)} accessibilityRole="switch" accessibilityState={{ checked: value }}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Text style={styles.toggleHint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: colors.border, true: colors.primary + '88' }}
+        thumbColor={value ? colors.primary : colors.textMuted}
+      />
+    </Pressable>
   );
 }
 
@@ -323,6 +460,18 @@ const styles = StyleSheet.create({
   },
   chipOrder: { color: colors.primary, borderColor: colors.primary + '59', backgroundColor: colors.primary + '1A' },
   chipPass: { color: colors.success, borderColor: colors.success + '59', backgroundColor: colors.success + '1A' },
+  chipRule: { color: colors.accent, borderColor: colors.accent + '59', backgroundColor: colors.accent + '1A' },
+  sectionLabel: { fontSize: 12, color: colors.textMuted, fontFamily: fonts.bold, marginTop: 4, marginBottom: 6 },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  toggleLabel: { color: colors.text, fontSize: 13.5, fontFamily: fonts.semiBold },
+  toggleHint: { color: colors.textFaint, fontSize: 11.5, fontFamily: fonts.regular, marginTop: 1 },
   cardActions: {
     flexDirection: 'row',
     gap: spacing.sm,

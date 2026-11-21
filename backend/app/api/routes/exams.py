@@ -13,8 +13,9 @@ unlike a segment quiz (graded question-by-question, immediately) an exam
 is answered all at once and graded as a whole, with a server-anchored
 timer between start and submit.
 """
+import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -31,6 +32,8 @@ from app.schemas.exam import (
     ExamAttemptRow,
     ExamAttemptsOut,
     ExamCreate,
+    ExamDraftIn,
+    ExamHistoryRow,
     ExamOut,
     ExamQuestionForStudent,
     ExamStartOut,
@@ -52,6 +55,154 @@ FAST_ATTEMPT_SECONDS_PER_QUESTION = 8
 
 def _grade(question: Question, submitted_answer: str) -> bool:
     return submitted_answer.strip().lower() == question.correct_answer.strip().lower()
+
+
+# Network slack after a time limit runs out: a submit/autosave that arrives
+# within this many seconds of the deadline is still accepted as-is.
+TIME_LIMIT_GRACE_SECONDS = 30
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _deadline(attempt: ExamAttempt, exam: Exam) -> datetime | None:
+    if not exam.time_limit_minutes:
+        return None
+    return attempt.started_at + timedelta(minutes=exam.time_limit_minutes)
+
+
+def _is_expired(attempt: ExamAttempt, exam: Exam) -> bool:
+    deadline = _deadline(attempt, exam)
+    return deadline is not None and _now() > deadline + timedelta(seconds=TIME_LIMIT_GRACE_SECONDS)
+
+
+def _finalize_attempt(
+    db: Session,
+    attempt: ExamAttempt,
+    exam: Exam,
+    answers: dict[str, str],
+    *,
+    auto: bool,
+) -> ExamSubmitResult:
+    """Grades and closes an attempt. Every question currently in the exam
+    counts toward the total; an unanswered one is simply wrong. Correct
+    answers/explanations are only revealed when the attempt passed or the
+    exam has show_answers_on_fail on."""
+    questions = db.query(Question).filter(Question.exam_id == exam.id).all()
+    if not questions:
+        raise HTTPException(status_code=400, detail="This exam has no questions.")
+
+    graded: list[tuple[Question, bool]] = []
+    correct_count = 0
+    for question in questions:
+        submitted = (answers.get(str(question.id)) or "").strip()
+        is_correct = bool(submitted) and _grade(question, submitted)
+        if is_correct:
+            correct_count += 1
+        graded.append((question, is_correct))
+        if submitted:
+            db.add(
+                QuestionAttempt(
+                    user_id=attempt.user_id,
+                    question_id=question.id,
+                    exam_attempt_id=attempt.id,
+                    submitted_answer=submitted,
+                    is_correct=is_correct,
+                )
+            )
+
+    total_count = len(questions)
+    score_percent = (correct_count / total_count) * 100
+    passed = score_percent >= exam.passing_percent
+    reveal = passed or exam.show_answers_on_fail
+
+    # An auto-submitted attempt "ended" at its deadline, not whenever the
+    # server happened to notice it was overdue.
+    now = _now()
+    deadline = _deadline(attempt, exam)
+    ended_at = min(now, deadline) if (auto and deadline) else now
+
+    attempt.submitted_at = now
+    attempt.score_percent = score_percent
+    attempt.passed = passed
+    attempt.duration_seconds = max(0, int((ended_at - attempt.started_at).total_seconds()))
+    attempt.auto_submitted = auto
+    attempt.draft_answers = None
+    attempt.flagged_questions = None
+    db.commit()
+
+    order = {qid: i for i, qid in enumerate(attempt.question_order or [])}
+    graded.sort(key=lambda pair: order.get(str(pair[0].id), len(order)))
+    return ExamSubmitResult(
+        score_percent=score_percent,
+        passed=passed,
+        correct_count=correct_count,
+        total_count=total_count,
+        duration_seconds=attempt.duration_seconds,
+        answers=[
+            ExamAnswerResult(
+                question_id=q.id,
+                is_correct=ok,
+                correct_answer=q.correct_answer if reveal else None,
+                explanation=q.explanation if reveal else None,
+            )
+            for q, ok in graded
+        ],
+        answers_revealed=reveal,
+        auto_submitted=auto,
+    )
+
+
+def _close_if_expired(db: Session, attempt: ExamAttempt | None, exam: Exam) -> ExamAttempt | None:
+    """Auto-submits an in-progress attempt whose time limit has run out
+    (grading its saved draft) and returns None; otherwise returns it as-is.
+    Called lazily wherever an attempt is looked at, so no background job is
+    needed."""
+    if attempt is None or attempt.submitted_at is not None:
+        return attempt
+    if _is_expired(attempt, exam):
+        _finalize_attempt(db, attempt, exam, attempt.draft_answers or {}, auto=True)
+        return None
+    return attempt
+
+
+def _in_progress_attempt(db: Session, exam: Exam, user_id: uuid.UUID) -> ExamAttempt | None:
+    attempt = (
+        db.query(ExamAttempt)
+        .filter(
+            ExamAttempt.exam_id == exam.id,
+            ExamAttempt.user_id == user_id,
+            ExamAttempt.submitted_at.is_(None),
+        )
+        .order_by(ExamAttempt.started_at.desc())
+        .first()
+    )
+    return _close_if_expired(db, attempt, exam)
+
+
+def _start_block(db: Session, exam: Exam, user_id: uuid.UUID) -> tuple[str | None, datetime | None, list[ExamAttempt]]:
+    """Why a NEW attempt can't start right now (or None), when the cooldown
+    ends, and the student's submitted attempts newest first."""
+    submitted = (
+        db.query(ExamAttempt)
+        .filter(
+            ExamAttempt.exam_id == exam.id,
+            ExamAttempt.user_id == user_id,
+            ExamAttempt.submitted_at.isnot(None),
+        )
+        .order_by(ExamAttempt.submitted_at.desc())
+        .all()
+    )
+    if _question_count(db, exam.id) == 0:
+        return "no_questions", None, submitted
+    if exam.max_attempts and len(submitted) >= exam.max_attempts:
+        return "max_attempts", None, submitted
+    if exam.retake_cooldown_minutes and submitted:
+        next_at = submitted[0].submitted_at + timedelta(minutes=exam.retake_cooldown_minutes)
+        if next_at > _now():
+            return "cooldown", next_at, submitted
+    return None, None, submitted
 
 
 def _question_count(db: Session, exam_id: uuid.UUID) -> int:
@@ -107,6 +258,12 @@ def create_exam(
         description=payload.description,
         order_index=payload.order_index,
         passing_percent=payload.passing_percent,
+        time_limit_minutes=payload.time_limit_minutes,
+        max_attempts=payload.max_attempts,
+        retake_cooldown_minutes=payload.retake_cooldown_minutes,
+        shuffle_questions=payload.shuffle_questions,
+        shuffle_choices=payload.shuffle_choices,
+        show_answers_on_fail=payload.show_answers_on_fail,
     )
     db.add(exam)
     db.commit()
@@ -172,6 +329,17 @@ def list_exam_attempts(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     ensure_can_manage_course(db, current_user, exam.course_id)
+
+    # Grade any attempt whose time ran out while the student was away, so
+    # it shows up here instead of sitting "in progress" forever.
+    if exam.time_limit_minutes:
+        overdue = (
+            db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.submitted_at.is_(None))
+            .all()
+        )
+        for attempt in overdue:
+            _close_if_expired(db, attempt, exam)
 
     question_count = _question_count(db, exam_id)
 
@@ -254,23 +422,58 @@ def get_exam_status(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
+    in_progress = _in_progress_attempt(db, exam, current_user.id)
     best = _best_attempt(db, exam_id, current_user.id)
-    in_progress = (
-        db.query(ExamAttempt)
-        .filter(
-            ExamAttempt.exam_id == exam_id,
-            ExamAttempt.user_id == current_user.id,
-            ExamAttempt.submitted_at.is_(None),
-        )
-        .order_by(ExamAttempt.started_at.desc())
-        .first()
-    )
+    block, next_at, submitted = _start_block(db, exam, current_user.id)
+    used = len(submitted)
     return ExamStatusOut(
         passed=best is not None,
         best_score_percent=best.score_percent if best else None,
         in_progress_attempt_id=in_progress.id if in_progress else None,
         in_progress_started_at=in_progress.started_at if in_progress else None,
+        question_count=_question_count(db, exam_id),
+        time_limit_minutes=exam.time_limit_minutes,
+        max_attempts=exam.max_attempts,
+        attempts_used=used,
+        attempts_remaining=max(0, exam.max_attempts - used) if exam.max_attempts else None,
+        # Resuming an attempt that's already open is always allowed.
+        can_start=in_progress is not None or block is None,
+        blocked_reason=None if in_progress is not None else block,
+        next_attempt_at=next_at,
+        server_now=_now(),
+        history=[
+            ExamHistoryRow(
+                attempt_id=a.id,
+                score_percent=a.score_percent,
+                passed=a.passed,
+                duration_seconds=a.duration_seconds,
+                submitted_at=a.submitted_at,
+                auto_submitted=a.auto_submitted,
+            )
+            for a in submitted
+        ],
     )
+
+
+def _ordered_questions(attempt: ExamAttempt, questions: list[Question]) -> list[Question]:
+    """Questions in this attempt's stored order; any question added to the
+    exam after the attempt started goes at the end, deleted ones drop out."""
+    position = {qid: i for i, qid in enumerate(attempt.question_order or [])}
+    return sorted(questions, key=lambda q: (position.get(str(q.id), len(position)), str(q.id)))
+
+
+def _student_question(attempt: ExamAttempt, question: Question) -> ExamQuestionForStudent:
+    out = ExamQuestionForStudent.model_validate(question)
+    if isinstance(question.choices, dict):
+        stored = (attempt.choice_orders or {}).get(str(question.id))
+        keys = list(question.choices.keys())
+        if stored:
+            # Keep only keys that still exist, append any added since.
+            order = [k for k in stored if k in question.choices] + [k for k in keys if k not in stored]
+        else:
+            order = keys
+        out.choice_order = order
+    return out
 
 
 @router.post("/{exam_id}/start", response_model=ExamStartOut)
@@ -282,40 +485,85 @@ def start_exam(
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-
     questions = db.query(Question).filter(Question.exam_id == exam_id).order_by(Question.id).all()
     if not questions:
         raise HTTPException(status_code=400, detail="This exam has no questions yet.")
 
-    # Resume an already-open attempt instead of starting a second one in
-    # parallel — keeps the server-anchored started_at (and therefore the
-    # timer) honest across an app restart or a dropped connection, and
-    # stops a student from "resetting the clock" by abandoning a slow
-    # attempt and starting fresh. See ExamAttempt's docstring.
-    existing = (
-        db.query(ExamAttempt)
-        .filter(
-            ExamAttempt.exam_id == exam_id,
-            ExamAttempt.user_id == current_user.id,
-            ExamAttempt.submitted_at.is_(None),
+    # Resume an open attempt rather than starting a second one in parallel,
+    # so a dropped connection or force-close can't be used to reset the
+    # clock. An open attempt whose time ran out is graded and closed here.
+    attempt = _in_progress_attempt(db, exam, current_user.id)
+    if attempt is None:
+        block, next_at, _ = _start_block(db, exam, current_user.id)
+        if block == "max_attempts":
+            raise HTTPException(status_code=403, detail="max_attempts")
+        if block == "cooldown":
+            raise HTTPException(status_code=403, detail="cooldown")
+
+        question_ids = [str(q.id) for q in questions]
+        if exam.shuffle_questions:
+            random.shuffle(question_ids)
+        choice_orders: dict[str, list[str]] = {}
+        if exam.shuffle_choices:
+            for q in questions:
+                if isinstance(q.choices, dict) and q.choices:
+                    keys = list(q.choices.keys())
+                    random.shuffle(keys)
+                    choice_orders[str(q.id)] = keys
+
+        attempt = ExamAttempt(
+            exam_id=exam_id,
+            user_id=current_user.id,
+            question_order=question_ids,
+            choice_orders=choice_orders or None,
         )
-        .order_by(ExamAttempt.started_at.desc())
-        .first()
-    )
-    if existing is not None:
-        attempt = existing
-    else:
-        attempt = ExamAttempt(exam_id=exam_id, user_id=current_user.id)
         db.add(attempt)
         db.commit()
         db.refresh(attempt)
 
+    deadline = _deadline(attempt, exam)
     return ExamStartOut(
         attempt_id=attempt.id,
         started_at=attempt.started_at,
         passing_percent=exam.passing_percent,
-        questions=[ExamQuestionForStudent.model_validate(q) for q in questions],
+        questions=[_student_question(attempt, q) for q in _ordered_questions(attempt, questions)],
+        time_limit_seconds=exam.time_limit_minutes * 60 if exam.time_limit_minutes else None,
+        expires_at=deadline,
+        server_now=_now(),
+        saved_answers=attempt.draft_answers or {},
+        flagged_question_ids=attempt.flagged_questions or [],
     )
+
+
+def _own_open_attempt(db: Session, attempt_id: uuid.UUID, user: User) -> tuple[ExamAttempt, Exam]:
+    attempt = db.get(ExamAttempt, attempt_id)
+    if not attempt or attempt.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    if attempt.submitted_at is not None:
+        raise HTTPException(status_code=409, detail="This attempt was already submitted.")
+    exam = db.get(Exam, attempt.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    return attempt, exam
+
+
+@router.put("/attempts/{attempt_id}/draft", status_code=204)
+def save_exam_draft(
+    attempt_id: uuid.UUID,
+    payload: ExamDraftIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Autosave of the student's current answers and flags. Once the time
+    limit has run out the attempt is graded from the last saved draft and
+    this returns 409 "time_up"."""
+    attempt, exam = _own_open_attempt(db, attempt_id, current_user)
+    if _is_expired(attempt, exam):
+        _finalize_attempt(db, attempt, exam, attempt.draft_answers or {}, auto=True)
+        raise HTTPException(status_code=409, detail="time_up")
+    attempt.draft_answers = {k: v for k, v in payload.answers.items() if v is not None}
+    attempt.flagged_questions = list(dict.fromkeys(payload.flagged_question_ids))
+    db.commit()
 
 
 @router.post("/attempts/{attempt_id}/submit", response_model=ExamSubmitResult)
@@ -325,63 +573,10 @@ def submit_exam(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExamSubmitResult:
-    attempt = db.get(ExamAttempt, attempt_id)
-    if not attempt or attempt.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Attempt not found")
-    if attempt.submitted_at is not None:
-        raise HTTPException(status_code=409, detail="This attempt was already submitted.")
-
-    exam = db.get(Exam, attempt.exam_id)
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-
-    questions = {q.id: q for q in db.query(Question).filter(Question.exam_id == exam.id).all()}
-    if not questions:
-        raise HTTPException(status_code=400, detail="This exam has no questions.")
-
-    results: list[ExamAnswerResult] = []
-    correct_count = 0
-    for answer in payload.answers:
-        question = questions.get(answer.question_id)
-        if question is None:
-            continue  # ignore an answer for a question that isn't part of this exam
-        is_correct = _grade(question, answer.submitted_answer)
-        if is_correct:
-            correct_count += 1
-        db.add(
-            QuestionAttempt(
-                user_id=current_user.id,
-                question_id=question.id,
-                exam_attempt_id=attempt.id,
-                submitted_answer=answer.submitted_answer,
-                is_correct=is_correct,
-            )
-        )
-        results.append(
-            ExamAnswerResult(
-                question_id=question.id,
-                is_correct=is_correct,
-                correct_answer=question.correct_answer,
-                explanation=question.explanation,
-            )
-        )
-
-    total_count = len(questions)
-    score_percent = (correct_count / total_count) * 100 if total_count else 0.0
-    passed = score_percent >= exam.passing_percent
-
-    now = datetime.now(timezone.utc)
-    attempt.submitted_at = now
-    attempt.score_percent = score_percent
-    attempt.passed = passed
-    attempt.duration_seconds = int((now - attempt.started_at).total_seconds())
-    db.commit()
-
-    return ExamSubmitResult(
-        score_percent=score_percent,
-        passed=passed,
-        correct_count=correct_count,
-        total_count=total_count,
-        duration_seconds=attempt.duration_seconds,
-        answers=results,
-    )
+    attempt, exam = _own_open_attempt(db, attempt_id, current_user)
+    if _is_expired(attempt, exam):
+        # Too late for these answers to count — grade what was autosaved
+        # before the deadline instead.
+        return _finalize_attempt(db, attempt, exam, attempt.draft_answers or {}, auto=True)
+    answers = {str(a.question_id): a.submitted_answer for a in payload.answers}
+    return _finalize_attempt(db, attempt, exam, answers, auto=False)

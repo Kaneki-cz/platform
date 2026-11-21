@@ -635,6 +635,14 @@ export interface ExamAdmin {
   order_index: number;
   passing_percent: number;
   question_count: number;
+  // Exam rules — null means no limit. Optional so an older backend that
+  // doesn't send them yet still type-checks at runtime.
+  time_limit_minutes?: number | null;
+  max_attempts?: number | null;
+  retake_cooldown_minutes?: number | null;
+  shuffle_questions?: boolean;
+  shuffle_choices?: boolean;
+  show_answers_on_fail?: boolean;
 }
 
 export interface ExamCreateInput {
@@ -643,6 +651,14 @@ export interface ExamCreateInput {
   description?: string;
   order_index?: number;
   passing_percent?: number;
+  // Exam rules — null means no limit. Optional so an older backend that
+  // doesn't send them yet still type-checks at runtime.
+  time_limit_minutes?: number | null;
+  max_attempts?: number | null;
+  retake_cooldown_minutes?: number | null;
+  shuffle_questions?: boolean;
+  shuffle_choices?: boolean;
+  show_answers_on_fail?: boolean;
 }
 
 export interface ExamUpdateInput {
@@ -650,6 +666,14 @@ export interface ExamUpdateInput {
   description?: string;
   order_index?: number;
   passing_percent?: number;
+  // Exam rules — null means no limit. Optional so an older backend that
+  // doesn't send them yet still type-checks at runtime.
+  time_limit_minutes?: number | null;
+  max_attempts?: number | null;
+  retake_cooldown_minutes?: number | null;
+  shuffle_questions?: boolean;
+  shuffle_choices?: boolean;
+  show_answers_on_fail?: boolean;
 }
 
 // What a student sees before deciding to start/resume an exam.
@@ -662,6 +686,27 @@ export interface ExamStatus {
   // the app.
   in_progress_attempt_id: string | null;
   in_progress_started_at: string | null;
+  // Rules + history for the intro screen (all optional: older backend).
+  question_count?: number;
+  time_limit_minutes?: number | null;
+  max_attempts?: number | null;
+  attempts_used?: number;
+  attempts_remaining?: number | null;
+  can_start?: boolean;
+  blocked_reason?: 'max_attempts' | 'cooldown' | 'no_questions' | null;
+  next_attempt_at?: string | null;
+  server_now?: string | null;
+  history?: ExamHistoryRow[];
+}
+
+// One of the student's own submitted attempts, newest first.
+export interface ExamHistoryRow {
+  attempt_id: string;
+  score_percent: number | null;
+  passed: boolean;
+  duration_seconds: number | null;
+  submitted_at: string | null;
+  auto_submitted: boolean;
 }
 
 // What a student sees while taking the exam — no correct_answer, no
@@ -672,6 +717,8 @@ export interface ExamQuestionForStudent {
   question_type: QuestionType;
   choices: Record<string, string> | null;
   image_url: string | null;
+  // This attempt's display order for `choices` keys (shuffled per attempt).
+  choice_order?: string[] | null;
 }
 
 export interface ExamStartResult {
@@ -681,6 +728,11 @@ export interface ExamStartResult {
   started_at: string;
   passing_percent: number;
   questions: ExamQuestionForStudent[];
+  time_limit_seconds?: number | null;
+  expires_at?: string | null;
+  server_now?: string | null;
+  saved_answers?: Record<string, string>;
+  flagged_question_ids?: string[];
 }
 
 export interface ExamAnswerSubmit {
@@ -691,7 +743,8 @@ export interface ExamAnswerSubmit {
 export interface ExamAnswerResult {
   question_id: string;
   is_correct: boolean;
-  correct_answer: string;
+  // null when the attempt failed and the exam hides answers on fail.
+  correct_answer: string | null;
   explanation: string | null;
 }
 
@@ -702,4 +755,6 @@ export interface ExamSubmitResult {
   total_count: number;
   duration_seconds: number;
   answers: ExamAnswerResult[];
+  answers_revealed?: boolean;
+  auto_submitted?: boolean;
 }

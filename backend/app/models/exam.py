@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -44,6 +44,26 @@ class Exam(Base):
     # (app/api/routes/courses.py's PASS_THRESHOLD) — editable per exam since
     # not every exam should carry the same bar.
     passing_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=75, server_default="75")
+
+    # --- Exam rules (migrate_v17_exam_rules.py) ---------------------------
+    # NULL means "no limit" for each of the three numeric rules below.
+    # time_limit_minutes: the attempt auto-submits (with whatever answers
+    # were saved as drafts) once started_at + this many minutes passes.
+    time_limit_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # max_attempts: total submitted attempts allowed per student.
+    max_attempts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # retake_cooldown_minutes: minimum wait after a submitted attempt before
+    # the next one can start.
+    retake_cooldown_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Per-attempt random question order / multiple-choice option order —
+    # fixed for the life of that attempt (stored on ExamAttempt) so a
+    # resumed attempt looks the same as when it was started.
+    shuffle_questions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    shuffle_choices: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Whether a FAILED attempt's result reveals the correct answers and
+    # explanations. Off by default so retaking can't be turned into
+    # memorizing the answer key; a passed attempt always reveals them.
+    show_answers_on_fail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     course: Mapped["Course"] = relationship(back_populates="exams")
@@ -85,6 +105,20 @@ class ExamAttempt(Base):
     score_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     passed: Mapped[bool] = mapped_column(default=False, server_default="false")
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # --- migrate_v17_exam_rules.py ------------------------------------------
+    # This attempt's own question order (list of question id strings) and
+    # per-question multiple-choice key order ({question_id: [keys]}), fixed
+    # at start so resuming shows the same layout.
+    question_order: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    choice_orders: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Answers/flags saved while the attempt is in progress
+    # ({question_id: answer}, [question_id]) — survive an app crash, and are
+    # what gets graded if the time limit runs out before a manual submit.
+    draft_answers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    flagged_questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # True when the server submitted it because time ran out.
+    auto_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     exam: Mapped["Exam"] = relationship(back_populates="attempts")
     user: Mapped["User"] = relationship()

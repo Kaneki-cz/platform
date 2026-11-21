@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExamOut(BaseModel):
@@ -18,6 +18,12 @@ class ExamOut(BaseModel):
     order_index: int
     passing_percent: int
     question_count: int = 0
+    time_limit_minutes: int | None = None
+    max_attempts: int | None = None
+    retake_cooldown_minutes: int | None = None
+    shuffle_questions: bool = True
+    shuffle_choices: bool = True
+    show_answers_on_fail: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -28,13 +34,29 @@ class ExamCreate(BaseModel):
     description: str | None = None
     order_index: int = 0
     passing_percent: int = 75
+    time_limit_minutes: int | None = Field(default=None, ge=1)
+    max_attempts: int | None = Field(default=None, ge=1)
+    retake_cooldown_minutes: int | None = Field(default=None, ge=1)
+    shuffle_questions: bool = True
+    shuffle_choices: bool = True
+    show_answers_on_fail: bool = False
 
 
 class ExamUpdate(BaseModel):
+    """Partial update — only fields actually sent are applied (see
+    update_exam's exclude_unset). Send null for a numeric rule to remove
+    that limit."""
+
     title: str | None = None
     description: str | None = None
     order_index: int | None = None
     passing_percent: int | None = None
+    time_limit_minutes: int | None = Field(default=None, ge=1)
+    max_attempts: int | None = Field(default=None, ge=1)
+    retake_cooldown_minutes: int | None = Field(default=None, ge=1)
+    shuffle_questions: bool | None = None
+    shuffle_choices: bool | None = None
+    show_answers_on_fail: bool | None = None
 
 
 class ExamQuestionForStudent(BaseModel):
@@ -47,6 +69,10 @@ class ExamQuestionForStudent(BaseModel):
     question_type: str
     choices: dict | list | None = None
     image_url: str | None = None
+    # Display order for `choices` keys in THIS attempt (shuffled when the
+    # exam has shuffle_choices on). JSON object key order isn't reliable on
+    # every client, so the order travels as its own list.
+    choice_order: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -57,7 +83,24 @@ class ExamStartOut(BaseModel):
     # never from its own clock, so force-closing the app can't pause it.
     started_at: datetime
     passing_percent: int
+    # Already in this attempt's (possibly shuffled) order.
     questions: list[ExamQuestionForStudent]
+    # Time limit for this attempt, if any. `server_now` lets the app correct
+    # for a phone whose clock is off when computing the remaining time.
+    time_limit_seconds: int | None = None
+    expires_at: datetime | None = None
+    server_now: datetime | None = None
+    # Restored draft when resuming ({question_id: answer}, [question_id]).
+    saved_answers: dict[str, str] = {}
+    flagged_question_ids: list[str] = []
+
+
+class ExamDraftIn(BaseModel):
+    """Autosave while taking an exam — the full current state, replacing
+    whatever was saved before."""
+
+    answers: dict[str, str] = {}
+    flagged_question_ids: list[str] = []
 
 
 class ExamAnswerSubmit(BaseModel):
@@ -66,13 +109,16 @@ class ExamAnswerSubmit(BaseModel):
 
 
 class ExamSubmitRequest(BaseModel):
+    # May be partial — an unanswered question is simply graded wrong.
     answers: list[ExamAnswerSubmit]
 
 
 class ExamAnswerResult(BaseModel):
     question_id: uuid.UUID
     is_correct: bool
-    correct_answer: str
+    # Withheld (null) on a failed attempt unless the exam has
+    # show_answers_on_fail on — see ExamSubmitResult.answers_revealed.
+    correct_answer: str | None = None
     explanation: str | None = None
 
 
@@ -83,6 +129,9 @@ class ExamSubmitResult(BaseModel):
     total_count: int
     duration_seconds: int
     answers: list[ExamAnswerResult]
+    answers_revealed: bool = True
+    # True when the server submitted it because the time limit ran out.
+    auto_submitted: bool = False
 
 
 class ExamStatusOut(BaseModel):
@@ -96,6 +145,31 @@ class ExamStatusOut(BaseModel):
     best_score_percent: float | None = None
     in_progress_attempt_id: uuid.UUID | None = None
     in_progress_started_at: datetime | None = None
+    # --- exam rules, for the intro screen ---
+    question_count: int = 0
+    time_limit_minutes: int | None = None
+    max_attempts: int | None = None
+    attempts_used: int = 0
+    attempts_remaining: int | None = None
+    # False when a new attempt can't start right now; blocked_reason says
+    # why ("max_attempts" | "cooldown" | "no_questions") and next_attempt_at
+    # says when the cooldown ends.
+    can_start: bool = True
+    blocked_reason: str | None = None
+    next_attempt_at: datetime | None = None
+    server_now: datetime | None = None
+    history: list["ExamHistoryRow"] = []
+
+
+class ExamHistoryRow(BaseModel):
+    """One of the student's own submitted attempts, newest first."""
+
+    attempt_id: uuid.UUID
+    score_percent: float | None
+    passed: bool
+    duration_seconds: int | None
+    submitted_at: datetime | None
+    auto_submitted: bool = False
 
 
 class ExamAttemptRow(BaseModel):
@@ -130,3 +204,6 @@ class ExamAttemptsOut(BaseModel):
     exam_title: str
     question_count: int
     attempts: list[ExamAttemptRow] = []
+
+
+ExamStatusOut.model_rebuild()

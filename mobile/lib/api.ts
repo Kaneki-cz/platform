@@ -789,6 +789,17 @@ export function startExam(examId: string) {
   return request<ExamStartResult>(`/api/v1/exams/${examId}/start`, { method: 'POST' });
 }
 
+/** Student. Autosaves the in-progress answers + flagged questions so they
+ * survive an app crash, and so a time-limited attempt is graded from them
+ * if time runs out. Throws a 409 ApiError ("time_up") once the limit has
+ * passed — the server has already submitted the attempt by then. */
+export function saveExamDraft(attemptId: string, answers: Record<string, string>, flaggedQuestionIds: string[]) {
+  return request<void>(`/api/v1/exams/attempts/${attemptId}/draft`, {
+    method: 'PUT',
+    body: JSON.stringify({ answers, flagged_question_ids: flaggedQuestionIds }),
+  });
+}
+
 /** Student. Submits every answer at once and gets back the graded result —
  * see ExamSubmitResult. Throws a 409 ApiError if this attempt was already
  * submitted (e.g. a double-tap). */
