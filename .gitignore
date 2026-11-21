@@ -1,5 +1,10 @@
 # Backend
 backend/.venv/
+backend/venv/
+# Database dumps/backups hold real student data and password hashes —
+# this repo is public, so they must never be committed.
+*.dump
+*.sql.gz
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.env
