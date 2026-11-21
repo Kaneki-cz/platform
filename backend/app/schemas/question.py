@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QuestionAttemptOut(BaseModel):
@@ -55,6 +55,7 @@ class QuestionAdminOut(BaseModel):
     explanation: str | None = None
     pause_at_seconds: int | None = None
     image_url: str | None = None
+    points: int = 1
 
     model_config = {"from_attributes": True}
 
@@ -86,6 +87,7 @@ class QuestionCreate(BaseModel):
     explanation: str | None = None
     pause_at_seconds: int | None = None
     image_url: str | None = None
+    points: int = Field(default=1, ge=1, le=100)
 
 
 class QuestionUpdate(BaseModel):
@@ -96,3 +98,4 @@ class QuestionUpdate(BaseModel):
     explanation: str | None = None
     pause_at_seconds: int | None = None
     image_url: str | None = None
+    points: int | None = Field(default=None, ge=1, le=100)

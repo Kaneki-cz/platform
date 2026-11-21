@@ -120,6 +120,13 @@ class ExamAttempt(Base):
     # True when the server submitted it because time ran out.
     auto_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
+    # --- migrate_v19_points_and_essays.py ---------------------------------
+    earned_points: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_points: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # True while one or more essay answers wait for the teacher. The score
+    # (score_percent) stays NULL and passed False until every one is graded.
+    pending_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
     exam: Mapped["Exam"] = relationship(back_populates="attempts")
     user: Mapped["User"] = relationship()
     answers: Mapped[list["QuestionAttempt"]] = relationship(back_populates="exam_attempt")

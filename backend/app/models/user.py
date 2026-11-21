@@ -103,7 +103,7 @@ class User(Base):
 
     progress: Mapped[list["LessonProgress"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
-    question_attempts: Mapped[list["QuestionAttempt"]] = relationship(back_populates="user")
+    question_attempts: Mapped[list["QuestionAttempt"]] = relationship(back_populates="user", foreign_keys="QuestionAttempt.user_id")
     taught_subjects: Mapped[list["SubjectInstructor"]] = relationship(back_populates="user")
 
     @property

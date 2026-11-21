@@ -336,7 +336,7 @@ def my_dashboard(
                 func.sum(case((ExamAttempt.passed.is_(True), 1), else_=0)),
             )
             .join(ExamAttempt, ExamAttempt.exam_id == Exam.id)
-            .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+            .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False))
             .group_by(Exam.course_id)
             .all()
         )
@@ -444,7 +444,7 @@ def my_dashboard(
             .join(User, User.id == ExamAttempt.user_id)
             .filter(
                 Exam.course_id.in_(course_ids),
-                ExamAttempt.submitted_at.isnot(None),
+                ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False),
                 ExamAttempt.duration_seconds.isnot(None),
             )
             .all()
@@ -543,7 +543,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
         .join(Exam, Exam.id == ExamAttempt.exam_id)
         .join(User, User.id == ExamAttempt.user_id)
         .join(Course, Course.id == Exam.course_id)
-        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False))
         .order_by(Course.id, func.coalesce(User.full_name_ar, User.full_name), ExamAttempt.submitted_at.desc())
         .all()
     )
@@ -566,7 +566,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
         .join(Exam, Exam.id == ExamAttempt.exam_id)
         .filter(
             Exam.course_id.in_(course_ids),
-            ExamAttempt.submitted_at.isnot(None),
+            ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False),
             ExamAttempt.submitted_at >= month_cutoff,
         )
         .group_by(ExamAttempt.user_id)
@@ -578,7 +578,7 @@ def _grades_matrix_rows(db: Session, current_user: User) -> list[StudentExamGrad
     chapter_avg_rows = (
         db.query(ExamAttempt.user_id, Exam.course_id, func.avg(ExamAttempt.score_percent))
         .join(Exam, Exam.id == ExamAttempt.exam_id)
-        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None))
+        .filter(Exam.course_id.in_(course_ids), ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False))
         .group_by(ExamAttempt.user_id, Exam.course_id)
         .all()
     )
@@ -700,7 +700,7 @@ def course_student_report(
     if exam_titles:
         rows = (
             db.query(ExamAttempt.user_id, ExamAttempt.exam_id)
-            .filter(ExamAttempt.exam_id.in_(exam_titles.keys()), ExamAttempt.submitted_at.isnot(None))
+            .filter(ExamAttempt.exam_id.in_(exam_titles.keys()), ExamAttempt.submitted_at.isnot(None), ExamAttempt.pending_review.is_(False))
             .all()
         )
         for user_id, exam_id in rows:

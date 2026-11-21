@@ -31,6 +31,8 @@ from app.schemas.question import (
     QuestionUpdate,
 )
 
+ESSAY = "essay"
+
 router = APIRouter(tags=["questions"])
 
 
@@ -172,6 +174,8 @@ def create_question(
 ) -> Question:
     if bool(payload.lesson_id) == bool(payload.exam_id):
         raise HTTPException(status_code=400, detail="Set exactly one of lesson_id or exam_id.")
+    if payload.question_type == ESSAY and not payload.exam_id:
+        raise HTTPException(status_code=400, detail="Essay questions are only for exams (they need a teacher to grade them).")
 
     if payload.lesson_id:
         lesson = db.get(Lesson, payload.lesson_id)
@@ -194,6 +198,7 @@ def create_question(
         explanation=payload.explanation,
         pause_at_seconds=payload.pause_at_seconds,
         image_url=payload.image_url,
+        points=payload.points,
     )
     db.add(question)
     db.commit()
@@ -214,6 +219,10 @@ def update_question(
     ensure_can_manage_course(db, current_user, _course_id_of_question(db, question))
 
     fields = payload.model_dump(exclude_unset=True)
+    if fields.get("question_type") == ESSAY and question.lesson_id:
+        raise HTTPException(status_code=400, detail="Essay questions are only for exams (they need a teacher to grade them).")
+    if "points" in fields and fields["points"] is None:
+        fields.pop("points")
     # Captured before the field is overwritten below — this is the image
     # that's about to be replaced (or cleared), if any. Only actually stale
     # (and worth deleting from R2) once the new value is different AND the

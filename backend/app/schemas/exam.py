@@ -18,6 +18,9 @@ class ExamOut(BaseModel):
     order_index: int
     passing_percent: int
     question_count: int = 0
+    # Essay answers in this exam still waiting for a teacher's grade.
+    pending_reviews: int = 0
+    total_points: int = 0
     time_limit_minutes: int | None = None
     max_attempts: int | None = None
     retake_cooldown_minutes: int | None = None
@@ -69,6 +72,7 @@ class ExamQuestionForStudent(BaseModel):
     question_type: str
     choices: dict | list | None = None
     image_url: str | None = None
+    points: int = 1
     # Display order for `choices` keys in THIS attempt (shuffled when the
     # exam has shuffle_choices on). JSON object key order isn't reliable on
     # every client, so the order travels as its own list.
@@ -105,7 +109,7 @@ class ExamDraftIn(BaseModel):
 
 class ExamAnswerSubmit(BaseModel):
     question_id: uuid.UUID
-    submitted_answer: str
+    submitted_answer: str = Field(max_length=5000)
 
 
 class ExamSubmitRequest(BaseModel):
@@ -120,10 +124,19 @@ class ExamAnswerResult(BaseModel):
     # show_answers_on_fail on — see ExamSubmitResult.answers_revealed.
     correct_answer: str | None = None
     explanation: str | None = None
+    question_type: str | None = None
+    points: int = 1
+    points_awarded: float | None = None
+    # Essay answers: True while waiting for the teacher.
+    pending_review: bool = False
+    teacher_comment: str | None = None
+    submitted_answer: str | None = None
 
 
 class ExamSubmitResult(BaseModel):
-    score_percent: float
+    attempt_id: uuid.UUID | None = None
+    # None while essay answers are still waiting for the teacher.
+    score_percent: float | None = None
     passed: bool
     correct_count: int
     total_count: int
@@ -132,6 +145,11 @@ class ExamSubmitResult(BaseModel):
     answers_revealed: bool = True
     # True when the server submitted it because the time limit ran out.
     auto_submitted: bool = False
+    earned_points: float | None = None
+    total_points: float | None = None
+    # True while essay answers wait for the teacher; score_percent is None
+    # and passed False until then.
+    pending_review: bool = False
 
 
 class ExamStatusOut(BaseModel):
@@ -170,6 +188,7 @@ class ExamHistoryRow(BaseModel):
     duration_seconds: int | None
     submitted_at: datetime | None
     auto_submitted: bool = False
+    pending_review: bool = False
 
 
 class ExamAttemptRow(BaseModel):
@@ -197,6 +216,7 @@ class ExamAttemptRow(BaseModel):
     started_at: datetime
     submitted_at: datetime | None
     is_fast: bool = False
+    pending_review: bool = False
 
 
 class ExamAttemptsOut(BaseModel):
@@ -204,6 +224,44 @@ class ExamAttemptsOut(BaseModel):
     exam_title: str
     question_count: int
     attempts: list[ExamAttemptRow] = []
+
+
+
+class ReviewItem(BaseModel):
+    """One essay answer for the teacher to grade."""
+
+    # "model_answer" is a plain field, not pydantic's model_* namespace.
+    model_config = {"protected_namespaces": ()}
+
+    question_attempt_id: uuid.UUID
+    attempt_id: uuid.UUID
+    student_name: str | None
+    student_email: str
+    question_id: uuid.UUID
+    prompt: str
+    image_url: str | None = None
+    model_answer: str | None = None
+    max_points: int
+    submitted_answer: str
+    submitted_at: datetime | None
+    points_awarded: float | None = None
+    teacher_comment: str | None = None
+    reviewed_at: datetime | None = None
+
+
+class ReviewIn(BaseModel):
+    points_awarded: float = Field(ge=0)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewResult(BaseModel):
+    question_attempt_id: uuid.UUID
+    points_awarded: float
+    # Whether this was the last essay on that attempt — the attempt now
+    # has its final score.
+    attempt_finalized: bool
+    attempt_score_percent: float | None = None
+    attempt_passed: bool | None = None
 
 
 ExamStatusOut.model_rebuild()

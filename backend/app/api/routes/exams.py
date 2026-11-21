@@ -45,6 +45,9 @@ from app.schemas.exam import (
     ExamUpdate,
     ChoiceCount,
     QuestionAnalytics,
+    ReviewIn,
+    ReviewItem,
+    ReviewResult,
 )
 
 router = APIRouter(prefix="/api/v1/exams", tags=["exams"])
@@ -81,6 +84,9 @@ def _is_expired(attempt: ExamAttempt, exam: Exam) -> bool:
     return deadline is not None and _now() > deadline + timedelta(seconds=TIME_LIMIT_GRACE_SECONDS)
 
 
+ESSAY = "essay"
+
+
 def _finalize_attempt(
     db: Session,
     attempt: ExamAttempt,
@@ -89,37 +95,49 @@ def _finalize_attempt(
     *,
     auto: bool,
 ) -> ExamSubmitResult:
-    """Grades and closes an attempt. Every question currently in the exam
-    counts toward the total; an unanswered one is simply wrong. Correct
-    answers/explanations are only revealed when the attempt passed or the
-    exam has show_answers_on_fail on."""
+    """Grades and closes an attempt. Score = points earned / total points of
+    every question currently in the exam (an unanswered question earns 0).
+    Essay answers are stored for the teacher: the attempt then stays
+    pending_review — score_percent NULL, passed False — until all of them
+    are graded (see review_answer)."""
     questions = db.query(Question).filter(Question.exam_id == exam.id).all()
     if not questions:
         raise HTTPException(status_code=400, detail="This exam has no questions.")
 
-    graded: list[tuple[Question, bool]] = []
-    correct_count = 0
+    earned = 0.0
+    pending = False
     for question in questions:
         submitted = (answers.get(str(question.id)) or "").strip()
-        is_correct = bool(submitted) and _grade(question, submitted)
-        if is_correct:
-            correct_count += 1
-        graded.append((question, is_correct))
-        if submitted:
+        if not submitted:
+            continue
+        if question.question_type == ESSAY:
+            pending = True
             db.add(
                 QuestionAttempt(
                     user_id=attempt.user_id,
                     question_id=question.id,
                     exam_attempt_id=attempt.id,
                     submitted_answer=submitted,
-                    is_correct=is_correct,
+                    is_correct=False,
+                    needs_review=True,
                 )
             )
+            continue
+        is_correct = _grade(question, submitted)
+        points = float(question.points or 1) if is_correct else 0.0
+        earned += points
+        db.add(
+            QuestionAttempt(
+                user_id=attempt.user_id,
+                question_id=question.id,
+                exam_attempt_id=attempt.id,
+                submitted_answer=submitted,
+                is_correct=is_correct,
+                points_awarded=points,
+            )
+        )
 
-    total_count = len(questions)
-    score_percent = (correct_count / total_count) * 100
-    passed = score_percent >= exam.passing_percent
-    reveal = passed or exam.show_answers_on_fail
+    total = float(sum(q.points or 1 for q in questions))
 
     # An auto-submitted attempt "ended" at its deadline, not whenever the
     # server happened to notice it was overdue.
@@ -128,34 +146,101 @@ def _finalize_attempt(
     ended_at = min(now, deadline) if (auto and deadline) else now
 
     attempt.submitted_at = now
-    attempt.score_percent = score_percent
-    attempt.passed = passed
     attempt.duration_seconds = max(0, int((ended_at - attempt.started_at).total_seconds()))
     attempt.auto_submitted = auto
     attempt.draft_answers = None
     attempt.flagged_questions = None
+    attempt.earned_points = earned
+    attempt.total_points = total
+    attempt.pending_review = pending
+    if pending:
+        attempt.score_percent = None
+        attempt.passed = False
+    else:
+        attempt.score_percent = (earned / total) * 100 if total else 0.0
+        attempt.passed = attempt.score_percent >= exam.passing_percent
     db.commit()
+    return _build_result(db, attempt, exam)
 
+
+def _build_result(db: Session, attempt: ExamAttempt, exam: Exam) -> ExamSubmitResult:
+    """The result screen for a submitted attempt, rebuilt from what's stored
+    — used right after submitting and when a student reopens an old one
+    (e.g. after the teacher graded their essay answers)."""
+    questions = db.query(Question).filter(Question.exam_id == exam.id).all()
+    rows = {
+        qa.question_id: qa
+        for qa in db.query(QuestionAttempt).filter(QuestionAttempt.exam_attempt_id == attempt.id).all()
+    }
     order = {qid: i for i, qid in enumerate(attempt.question_order or [])}
-    graded.sort(key=lambda pair: order.get(str(pair[0].id), len(order)))
-    return ExamSubmitResult(
-        score_percent=score_percent,
-        passed=passed,
-        correct_count=correct_count,
-        total_count=total_count,
-        duration_seconds=attempt.duration_seconds,
-        answers=[
+    questions.sort(key=lambda q: (order.get(str(q.id), len(order)), str(q.id)))
+
+    reveal = (attempt.passed or exam.show_answers_on_fail) and not attempt.pending_review
+    answers: list[ExamAnswerResult] = []
+    for q in questions:
+        row = rows.get(q.id)
+        answers.append(
             ExamAnswerResult(
                 question_id=q.id,
-                is_correct=ok,
-                correct_answer=q.correct_answer if reveal else None,
+                is_correct=bool(row and row.is_correct),
+                correct_answer=(q.correct_answer or None) if reveal else None,
                 explanation=q.explanation if reveal else None,
+                question_type=q.question_type,
+                points=q.points or 1,
+                points_awarded=(row.points_awarded if row else 0.0),
+                pending_review=bool(row and row.needs_review),
+                teacher_comment=row.teacher_comment if row else None,
+                submitted_answer=row.submitted_answer if row else None,
             )
-            for q, ok in graded
-        ],
+        )
+    return ExamSubmitResult(
+        attempt_id=attempt.id,
+        score_percent=attempt.score_percent,
+        passed=attempt.passed,
+        correct_count=sum(1 for r in rows.values() if r.is_correct),
+        total_count=len(questions),
+        duration_seconds=attempt.duration_seconds or 0,
+        answers=answers,
         answers_revealed=reveal,
-        auto_submitted=auto,
+        auto_submitted=attempt.auto_submitted,
+        earned_points=attempt.earned_points,
+        total_points=attempt.total_points,
+        pending_review=attempt.pending_review,
     )
+
+
+def _recompute_attempt(db: Session, attempt: ExamAttempt, exam: Exam) -> None:
+    """After a teacher grades an essay: once nothing on the attempt still
+    needs review, give it its final score."""
+    rows = db.query(QuestionAttempt).filter(QuestionAttempt.exam_attempt_id == attempt.id).all()
+    if any(r.needs_review for r in rows):
+        attempt.pending_review = True
+        attempt.score_percent = None
+        attempt.passed = False
+        return
+    total = attempt.total_points
+    if not total:
+        total = float(sum(q.points or 1 for q in db.query(Question).filter(Question.exam_id == exam.id).all()))
+        attempt.total_points = total
+    earned = float(sum(r.points_awarded or 0 for r in rows))
+    attempt.earned_points = earned
+    attempt.pending_review = False
+    attempt.score_percent = (earned / total) * 100 if total else 0.0
+    attempt.passed = attempt.score_percent >= exam.passing_percent
+
+
+def _exam_out(db: Session, exam: Exam) -> ExamOut:
+    out = ExamOut.model_validate(exam)
+    questions = db.query(Question.points).filter(Question.exam_id == exam.id).all()
+    out.question_count = len(questions)
+    out.total_points = int(sum((p or 1) for (p,) in questions))
+    out.pending_reviews = (
+        db.query(QuestionAttempt)
+        .join(ExamAttempt, ExamAttempt.id == QuestionAttempt.exam_attempt_id)
+        .filter(ExamAttempt.exam_id == exam.id, QuestionAttempt.needs_review.is_(True))
+        .count()
+    )
+    return out
 
 
 def _close_if_expired(db: Session, attempt: ExamAttempt | None, exam: Exam) -> ExamAttempt | None:
@@ -239,9 +324,7 @@ def list_course_exams(
     exams = db.query(Exam).filter(Exam.course_id == course_id).order_by(Exam.order_index).all()
     result = []
     for exam in exams:
-        out = ExamOut.model_validate(exam)
-        out.question_count = _question_count(db, exam.id)
-        result.append(out)
+        result.append(_exam_out(db, exam))
     return result
 
 
@@ -291,9 +374,7 @@ def get_exam(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     ensure_can_manage_course(db, current_user, exam.course_id)
-    out = ExamOut.model_validate(exam)
-    out.question_count = _question_count(db, exam.id)
-    return out
+    return _exam_out(db, exam)
 
 
 @router.put("/{exam_id}", response_model=ExamOut)
@@ -312,9 +393,7 @@ def update_exam(
         setattr(exam, field, value)
     db.commit()
     db.refresh(exam)
-    out = ExamOut.model_validate(exam)
-    out.question_count = _question_count(db, exam.id)
-    return out
+    return _exam_out(db, exam)
 
 
 @router.get("/{exam_id}/attempts", response_model=ExamAttemptsOut)
@@ -388,6 +467,7 @@ def list_exam_attempts(
                 started_at=attempt.started_at,
                 submitted_at=attempt.submitted_at,
                 is_fast=is_fast,
+                pending_review=attempt.pending_review,
             )
         )
 
@@ -535,6 +615,7 @@ def get_exam_status(
                 duration_seconds=a.duration_seconds,
                 submitted_at=a.submitted_at,
                 auto_submitted=a.auto_submitted,
+                pending_review=a.pending_review,
             )
             for a in submitted
         ],
@@ -550,6 +631,7 @@ def _ordered_questions(attempt: ExamAttempt, questions: list[Question]) -> list[
 
 def _student_question(attempt: ExamAttempt, question: Question) -> ExamQuestionForStudent:
     out = ExamQuestionForStudent.model_validate(question)
+    out.points = question.points or 1
     if isinstance(question.choices, dict):
         stored = (attempt.choice_orders or {}).get(str(question.id))
         keys = list(question.choices.keys())
@@ -669,3 +751,115 @@ def submit_exam(
     answers = {str(a.question_id): a.submitted_answer for a in payload.answers}
     activity.record_activity(db, current_user.id)
     return _finalize_attempt(db, attempt, exam, answers, auto=False)
+
+
+@router.get("/attempts/{attempt_id}/result", response_model=ExamSubmitResult)
+def get_attempt_result(
+    attempt_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ExamSubmitResult:
+    """A student's own past attempt — e.g. to see the final score once the
+    teacher has graded their essay answers."""
+    attempt = db.get(ExamAttempt, attempt_id)
+    if not attempt or attempt.user_id != current_user.id or attempt.submitted_at is None:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    exam = db.get(Exam, attempt.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    return _build_result(db, attempt, exam)
+
+
+# --- Teacher: grading essay answers ------------------------------------------
+
+
+@router.get("/{exam_id}/reviews", response_model=list[ReviewItem])
+def list_reviews(
+    exam_id: uuid.UUID,
+    status: str = "pending",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> list[ReviewItem]:
+    """Essay answers for this exam: status=pending (default, oldest first)
+    or status=reviewed (most recently graded first)."""
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    ensure_can_manage_course(db, current_user, exam.course_id)
+
+    query = (
+        db.query(QuestionAttempt, ExamAttempt, Question, User)
+        .join(ExamAttempt, ExamAttempt.id == QuestionAttempt.exam_attempt_id)
+        .join(Question, Question.id == QuestionAttempt.question_id)
+        .join(User, User.id == QuestionAttempt.user_id)
+        .filter(ExamAttempt.exam_id == exam_id, Question.question_type == ESSAY)
+    )
+    if status == "reviewed":
+        query = query.filter(QuestionAttempt.needs_review.is_(False)).order_by(QuestionAttempt.reviewed_at.desc())
+    else:
+        query = query.filter(QuestionAttempt.needs_review.is_(True)).order_by(ExamAttempt.submitted_at.asc())
+
+    return [
+        ReviewItem(
+            question_attempt_id=qa.id,
+            attempt_id=attempt.id,
+            student_name=user.full_name_ar or user.full_name,
+            student_email=user.email,
+            question_id=question.id,
+            prompt=question.prompt,
+            image_url=question.image_url,
+            model_answer=question.correct_answer or None,
+            max_points=question.points or 1,
+            submitted_answer=qa.submitted_answer,
+            submitted_at=attempt.submitted_at,
+            points_awarded=qa.points_awarded,
+            teacher_comment=qa.teacher_comment,
+            reviewed_at=qa.reviewed_at,
+        )
+        for qa, attempt, question, user in query.limit(500).all()
+    ]
+
+
+@router.post("/answers/{question_attempt_id}/review", response_model=ReviewResult)
+def review_answer(
+    question_attempt_id: uuid.UUID,
+    payload: ReviewIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_instructor_or_admin),
+) -> ReviewResult:
+    """Grade (or re-grade) one essay answer with 0..max points. When it was
+    the attempt's last ungraded essay, the attempt gets its final score —
+    which can also unlock lessons gated by this exam."""
+    qa = db.get(QuestionAttempt, question_attempt_id)
+    if not qa or qa.exam_attempt_id is None:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    attempt = db.get(ExamAttempt, qa.exam_attempt_id)
+    exam = db.get(Exam, attempt.exam_id) if attempt else None
+    question = db.get(Question, qa.question_id)
+    if not attempt or not exam or not question:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    ensure_can_manage_course(db, current_user, exam.course_id)
+    if question.question_type != ESSAY:
+        raise HTTPException(status_code=400, detail="Only essay answers are graded by hand.")
+    max_points = float(question.points or 1)
+    if payload.points_awarded > max_points:
+        raise HTTPException(status_code=400, detail=f"This question is worth at most {question.points or 1} point(s).")
+
+    qa.points_awarded = payload.points_awarded
+    qa.is_correct = payload.points_awarded >= max_points
+    qa.needs_review = False
+    qa.reviewed_at = _now()
+    qa.reviewed_by_user_id = current_user.id
+    qa.teacher_comment = (payload.comment or "").strip() or None
+    db.flush()
+
+    was_pending = attempt.pending_review
+    _recompute_attempt(db, attempt, exam)
+    db.commit()
+    return ReviewResult(
+        question_attempt_id=qa.id,
+        points_awarded=qa.points_awarded,
+        attempt_finalized=was_pending and not attempt.pending_review,
+        attempt_score_percent=attempt.score_percent,
+        attempt_passed=None if attempt.pending_review else attempt.passed,
+    )

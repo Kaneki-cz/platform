@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,11 @@ class Question(Base):
     # lessons.py's video_url handling. Requires migrate_v10_question_images.py
     # on an existing database.
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How much this question is worth in an exam score (migrate_v19). An
+    # "essay" question_type is graded by the teacher; its correct_answer is
+    # then just a model answer / grading notes, never shown to students
+    # before grading.
+    points: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     # Second into the lecture's video where playback should pause and this
     # question's segment-quiz should appear — every question sharing the
     # same value belongs to the same "part" of the lecture. NULL means "no
@@ -71,10 +76,20 @@ class QuestionAttempt(Base):
     # a whole. NULL for every existing/segment-quiz row, unaffected by this
     # feature. Requires migrate_v9_exams.py on an existing database.
     exam_attempt_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("exam_attempts.id"), nullable=True, index=True)
-    submitted_answer: Mapped[str] = mapped_column(String(500), nullable=False)
+    submitted_answer: Mapped[str] = mapped_column(Text, nullable=False)  # TEXT since migrate_v19 (essays)
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
+    # --- exam scoring (migrate_v19) ---------------------------------------
+    # Points earned for this answer. Auto-graded: the question's points or 0.
+    # Essay: NULL until the teacher reviews it (needs_review True meanwhile).
+    points_awarded: Mapped[float | None] = mapped_column(Float, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    teacher_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped["User"] = relationship(back_populates="question_attempts")
+    user: Mapped["User"] = relationship(back_populates="question_attempts", foreign_keys=[user_id])
     question: Mapped["Question"] = relationship(back_populates="attempts")
     exam_attempt: Mapped["ExamAttempt | None"] = relationship(back_populates="answers")
