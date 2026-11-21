@@ -31,7 +31,7 @@ const STRINGS = {
 export default function RegisterScreen() {
   const { register } = useAuth();
   const router = useRouter();
-  const { language, toggleLanguage } = useLanguage();
+  const { language } = useLanguage();
   const t = STRINGS[language];
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -59,10 +59,6 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.langButton} onPress={toggleLanguage} hitSlop={8}>
-        <Text style={styles.langButtonText}>{language === 'ar' ? 'EN' : 'ع'}</Text>
-      </Pressable>
-
       <Text style={styles.title}>{t.title}</Text>
 
       <TextInput
@@ -109,17 +105,6 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
-  langButton: {
-    position: 'absolute',
-    top: 56,
-    right: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  langButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   title: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 32, color: colors.text },
   input: {
     borderWidth: 1,

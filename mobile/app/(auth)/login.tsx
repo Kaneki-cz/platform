@@ -42,7 +42,7 @@ const STRINGS = {
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const { language, toggleLanguage } = useLanguage();
+  const { language } = useLanguage();
   const router = useRouter();
   const t = STRINGS[language];
   const [email, setEmail] = useState('');
@@ -94,10 +94,6 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.langButton} onPress={toggleLanguage} hitSlop={8}>
-        <Text style={styles.langButtonText}>{language === 'ar' ? 'EN' : 'ع'}</Text>
-      </Pressable>
-
       <LinearGradient colors={gradientBrand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.logoMark}>
         <Text style={styles.logoMarkText}>Ω</Text>
       </LinearGradient>
@@ -152,17 +148,6 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
-  langButton: {
-    position: 'absolute',
-    top: 56,
-    right: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  langButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   // Ω brand mark (2026 redesign pass) — same gradient as the tab bar / CTA
   // button, giving the login screen a visual anchor instead of jumping
   // straight to plain text.
