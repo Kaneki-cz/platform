@@ -451,6 +451,9 @@ const styles = StyleSheet.create({
   // styles.posterCoverWrapWide` call sites don't need touching.
   posterCoverWrapWide: {},
   posterCover: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  // Fallback tile for a lecture with no cover image yet.
+  photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
+  photoPlaceholderText: { fontSize: 28 },
   posterScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
   posterIndexBadge: {
     position: 'absolute',

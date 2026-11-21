@@ -170,7 +170,7 @@ async function uploadFile(
   // createUploadTask (rather than plain uploadAsync) is the only variant of
   // this API that reports byte-level progress as the upload runs — see the
   // callback below. Same underlying native upload either way.
-  const reportProgress = (data: FileSystem.FileSystemUploadProgressData) => {
+  const reportProgress = (data: FileSystem.UploadProgressData) => {
     if (onProgress && data.totalBytesExpectedToSend > 0) {
       onProgress(data.totalBytesSent / data.totalBytesExpectedToSend);
     }

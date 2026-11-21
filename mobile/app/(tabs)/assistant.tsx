@@ -457,15 +457,8 @@ export default function AssistantScreen() {
           // bubbles are untouched. LinearGradient takes a style prop exactly
           // like View, so swapping the wrapping element per-branch is enough;
           // nothing about the message content or actions below changes.
-          const BubbleWrap = isUser ? LinearGradient : View;
-          const bubbleGradientProps = isUser
-            ? { colors: gradientBrand, start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }
-            : {};
-          return (
-            <BubbleWrap
-              style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}
-              {...bubbleGradientProps}
-            >
+          const bubbleContent = (
+            <>
               {isUser ? (
                 <>
                   {item.imageUri ? <Image source={{ uri: item.imageUri }} style={styles.messageImage} /> : null}
@@ -494,7 +487,21 @@ export default function AssistantScreen() {
                 </>
               )}
               {item.visualization ? <VisualizationRenderer visualization={item.visualization} /> : null}
-            </BubbleWrap>
+            </>
+          );
+          // Two explicit branches (not a `const Wrap = isUser ? LinearGradient
+          // : View` swap) so TypeScript can check each one's props on its own.
+          return isUser ? (
+            <LinearGradient
+              colors={gradientBrand}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.bubble, styles.userBubble]}
+            >
+              {bubbleContent}
+            </LinearGradient>
+          ) : (
+            <View style={[styles.bubble, styles.assistantBubble]}>{bubbleContent}</View>
           );
         }}
         ListFooterComponent={
