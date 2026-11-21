@@ -32,6 +32,7 @@ import type {
   LessonViewInfo,
   ManagedCourse,
   ProgressEntry,
+  ProgressSummary,
   RedeemCodeResult,
   Question,
   QuestionAdmin,
@@ -560,6 +561,11 @@ export function updateLesson(lessonId: string, input: LessonUpdateInput) {
 }
 
 // --- Progress -------------------------------------------------------------
+/** Streak + per-course progress for the home screen. */
+export function getProgressSummary() {
+  return request<ProgressSummary>('/api/v1/progress/summary');
+}
+
 export function listProgress() {
   return request<ProgressEntry[]>('/api/v1/progress');
 }

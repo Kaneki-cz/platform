@@ -790,3 +790,18 @@ export interface ExamAnalytics {
   average_duration_seconds: number | null;
   questions: QuestionAnalytics[]; // hardest first
 }
+
+// GET /api/v1/progress/summary — home-screen numbers.
+export interface CourseProgress {
+  course_id: string;
+  lesson_count: number;
+  completed_count: number;
+  percent: number; // 0..100
+}
+
+export interface ProgressSummary {
+  streak_days: number;
+  active_today: boolean;
+  lessons_completed: number;
+  courses: CourseProgress[];
+}

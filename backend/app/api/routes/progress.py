@@ -3,9 +3,22 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
+from app.models.course import Course
+from app.models.lesson import Lesson
 from app.models.progress import LessonProgress
 from app.models.user import User
-from app.schemas.progress import ProgressOut, ProgressSkipUpdate, ProgressUpdate
+from app.schemas.progress import (
+    CourseProgressOut,
+    ProgressOut,
+    ProgressSkipUpdate,
+    ProgressSummaryOut,
+    ProgressUpdate,
+)
+from app.services import activity
+
+# A lesson counts as finished from this completion percent up (the player
+# reports in steps, so a fully watched lecture can land a little under 100).
+DONE_PERCENT = 90
 
 router = APIRouter(prefix="/api/v1/progress", tags=["progress"])
 
@@ -39,6 +52,7 @@ def upsert_progress(
     # Monotonic: replaying a lecture from the start (or re-opening it after
     # finishing) should never make recorded progress go backwards.
     entry.completion_percent = max(entry.completion_percent or 0, payload.completion_percent)
+    activity.record_activity(db, current_user.id)
     db.commit()
     db.refresh(entry)
     return entry
@@ -74,3 +88,48 @@ def report_video_skip(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/summary", response_model=ProgressSummaryOut)
+def progress_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProgressSummaryOut:
+    """Home-screen numbers in one call: the day streak plus per-course
+    progress (average completion over every lesson in the course, unwatched
+    lessons counting as 0)."""
+    streak, active_today = activity.current_streak(db, current_user.id)
+
+    lessons = db.query(Lesson.id, Lesson.course_id).all()
+    by_course: dict = {}
+    for lesson_id, course_id in lessons:
+        by_course.setdefault(course_id, []).append(lesson_id)
+
+    done = {
+        row.lesson_id: row.completion_percent or 0
+        for row in db.query(LessonProgress).filter(LessonProgress.user_id == current_user.id).all()
+    }
+
+    courses = []
+    for course_id, lesson_ids in by_course.items():
+        percents = [done.get(lid, 0) for lid in lesson_ids]
+        courses.append(
+            CourseProgressOut(
+                course_id=course_id,
+                lesson_count=len(lesson_ids),
+                completed_count=sum(1 for pct in percents if pct >= DONE_PERCENT),
+                percent=round(sum(percents) / len(percents), 1),
+            )
+        )
+    # Courses with no lessons yet still show up, at 0%.
+    known = set(by_course)
+    for (course_id,) in db.query(Course.id).all():
+        if course_id not in known:
+            courses.append(CourseProgressOut(course_id=course_id, lesson_count=0, completed_count=0, percent=0))
+
+    return ProgressSummaryOut(
+        streak_days=streak,
+        active_today=active_today,
+        lessons_completed=sum(1 for pct in done.values() if pct >= DONE_PERCENT),
+        courses=courses,
+    )

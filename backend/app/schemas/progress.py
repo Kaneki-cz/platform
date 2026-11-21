@@ -48,3 +48,19 @@ class BonusViewsGrant(BaseModel):
     # there's no daily cycle to a view count), so this simply adds to
     # whatever bonus_views already exists.
     extra: int = Field(gt=0)
+
+
+class CourseProgressOut(BaseModel):
+    course_id: uuid.UUID
+    lesson_count: int
+    completed_count: int
+    percent: float  # 0..100
+
+
+class ProgressSummaryOut(BaseModel):
+    """GET /api/v1/progress/summary — everything the home screen shows."""
+
+    streak_days: int
+    active_today: bool
+    lessons_completed: int
+    courses: list[CourseProgressOut] = []

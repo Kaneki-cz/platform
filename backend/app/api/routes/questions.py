@@ -20,7 +20,7 @@ from app.models.exam import Exam
 from app.models.lesson import Lesson
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
-from app.services import b2_storage
+from app.services import activity, b2_storage
 from app.schemas.question import (
     QuestionAdminOut,
     QuestionAttemptCreate,
@@ -126,6 +126,7 @@ def submit_question_attempt(
             is_correct=is_correct,
         )
     )
+    activity.record_activity(db, current_user.id)
     db.commit()
     return QuestionAttemptResult(
         is_correct=is_correct,

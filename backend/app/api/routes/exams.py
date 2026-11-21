@@ -27,6 +27,7 @@ from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
 from app.models.question import Question, QuestionAttempt
 from app.models.user import User
+from app.services import activity
 from app.schemas.exam import (
     ExamAnswerResult,
     ExamAttemptRow,
@@ -606,6 +607,8 @@ def start_exam(
         db.commit()
         db.refresh(attempt)
 
+    activity.record_activity(db, current_user.id)
+    db.commit()
     deadline = _deadline(attempt, exam)
     return ExamStartOut(
         attempt_id=attempt.id,
@@ -664,4 +667,5 @@ def submit_exam(
         # before the deadline instead.
         return _finalize_attempt(db, attempt, exam, attempt.draft_answers or {}, auto=True)
     answers = {str(a.question_id): a.submitted_answer for a in payload.answers}
+    activity.record_activity(db, current_user.id)
     return _finalize_attempt(db, attempt, exam, answers, auto=False)

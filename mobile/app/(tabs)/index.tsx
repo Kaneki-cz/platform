@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -6,11 +7,11 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { PressableScale, ProgressRing, Skeleton, enterStagger, useCountUp } from '@/components/motion';
 import { ResolvedImage } from '@/components/ResolvedImage';
-import { listCourses, listProgress } from '@/lib/api';
+import { getProgressSummary, listCourses, listProgress } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
-import type { Course, ProgressEntry } from '@/lib/types';
+import type { Course, ProgressEntry, ProgressSummary } from '@/lib/types';
 
 const STRINGS = {
   ar: {
@@ -22,6 +23,10 @@ const STRINGS = {
     chapters: 'فصول متاحة',
     continueLearning: 'كمّل التعلم',
     empty: 'مفيش كورسات لسه — تابعنا قريب.',
+    streakActive: (n: number) => `${n} يوم ورا بعض`,
+    streakKeep: (n: number) => `ذاكر النهارده عشان تحافظ على ${n} يوم`,
+    streakStart: 'ابدأ سلسلة أيام مذاكرة النهارده',
+    lessonsOf: (done: number, total: number) => `${done} من ${total} درس`,
   },
   en: {
     welcome: (name?: string) => `Welcome back${name ? `, ${name.split(' ')[0]}` : ''}`,
@@ -32,6 +37,10 @@ const STRINGS = {
     chapters: 'Chapters',
     continueLearning: 'Continue learning',
     empty: 'No courses yet — check back soon.',
+    streakActive: (n: number) => `${n}-day streak`,
+    streakKeep: (n: number) => `Study today to keep your ${n}-day streak`,
+    streakStart: 'Start a study streak today',
+    lessonsOf: (done: number, total: number) => `${done}/${total} lessons`,
   },
 };
 
@@ -46,12 +55,16 @@ export default function HomeScreen() {
   const router = useRouter();
   const [courses, setCourses] = useState<Course[] | null>(null);
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
+  // null until loaded, or when the server doesn't have the summary endpoint
+  // yet — the screen then falls back to the per-lesson numbers above.
+  const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [c, p] = await Promise.all([listCourses(), listProgress()]);
+    const [c, p, s] = await Promise.all([listCourses(), listProgress(), getProgressSummary().catch(() => null)]);
     setCourses(c);
     setProgress(p);
+    setSummary(s);
   }, []);
 
   // Re-fetch every time this tab gains focus, not just on first mount —
@@ -66,9 +79,16 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  const overallCompletion = progress.length
-    ? Math.round(progress.reduce((sum, p) => sum + p.completion_percent, 0) / progress.length)
-    : 0;
+  // With the summary: progress across every lesson in every course (unwatched
+  // ones count as 0). Without it: the average over lessons opened so far.
+  const totalLessons = summary?.courses.reduce((n, c) => n + c.lesson_count, 0) ?? 0;
+  const overallCompletion =
+    summary && totalLessons > 0
+      ? Math.round(summary.courses.reduce((sum, c) => sum + c.percent * c.lesson_count, 0) / totalLessons)
+      : progress.length
+        ? Math.round(progress.reduce((sum, p) => sum + p.completion_percent, 0) / progress.length)
+        : 0;
+  const courseProgress = new Map((summary?.courses ?? []).map((c) => [c.course_id, c]));
   const doneCount = progress.filter((p) => p.completion_percent >= DONE_THRESHOLD).length;
   const inProgressCount = progress.filter((p) => p.completion_percent > 0 && p.completion_percent < DONE_THRESHOLD).length;
 
@@ -77,6 +97,7 @@ export default function HomeScreen() {
       <Animated.View entering={FadeInDown.duration(450)}>
         <Text style={styles.greeting}>{t.welcome(user?.full_name ?? undefined)}</Text>
         <Text style={styles.subtitle}>{t.subtitle}</Text>
+        {summary ? <StreakChip t={t} days={summary.streak_days} activeToday={summary.active_today} /> : null}
       </Animated.View>
 
       <Animated.View entering={FadeInDown.delay(80).springify().damping(16)} style={styles.hero}>
@@ -163,6 +184,9 @@ export default function HomeScreen() {
                     <Text style={styles.courseMeta}>{item.grade_level}</Text>
                   </View>
                 ) : null}
+                {courseProgress.get(item.id)?.lesson_count ? (
+                  <CourseBar t={t} progress={courseProgress.get(item.id)!} />
+                ) : null}
               </View>
               <Text style={styles.chevron}>›</Text>
             </PressableScale>
@@ -170,6 +194,29 @@ export default function HomeScreen() {
         )}
         ListEmptyComponent={<Text style={styles.empty}>{t.empty}</Text>}
       />
+    </View>
+  );
+}
+
+function StreakChip({ t, days, activeToday }: { t: (typeof STRINGS)['en']; days: number; activeToday: boolean }) {
+  const lit = days > 0 && activeToday;
+  const text = days === 0 ? t.streakStart : activeToday ? t.streakActive(days) : t.streakKeep(days);
+  return (
+    <Animated.View entering={FadeIn.delay(300)} style={[styles.streakChip, lit && styles.streakChipLit]}>
+      <Ionicons name={lit ? 'flame' : 'flame-outline'} size={15} color={lit ? colors.accent : colors.textMuted} />
+      <Text style={[styles.streakText, lit && { color: colors.accent }]}>{text}</Text>
+    </Animated.View>
+  );
+}
+
+function CourseBar({ t, progress }: { t: (typeof STRINGS)['en']; progress: { percent: number; completed_count: number; lesson_count: number } }) {
+  const pct = Math.max(0, Math.min(100, progress.percent));
+  return (
+    <View style={styles.courseBarRow}>
+      <View style={styles.courseBarTrack}>
+        <View style={[styles.courseBarFill, { width: `${pct}%` }]} />
+      </View>
+      <Text style={styles.courseBarText}>{t.lessonsOf(progress.completed_count, progress.lesson_count)}</Text>
     </View>
   );
 }
@@ -253,6 +300,25 @@ const styles = StyleSheet.create({
   },
   thumbLetter: { color: colors.onPrimary, fontSize: 22, fontFamily: fonts.bold },
   courseBody: { flex: 1 },
+  courseBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 },
+  courseBarTrack: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  courseBarFill: { height: 5, borderRadius: 3, backgroundColor: colors.primary },
+  courseBarText: { color: colors.textMuted, fontSize: 11, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
+  streakChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  streakChipLit: { borderColor: `${colors.accent}66`, backgroundColor: `${colors.accent}14` },
+  streakText: { color: colors.textMuted, fontSize: 12.5, fontFamily: fonts.semiBold },
   courseTitle: { fontSize: 15, fontFamily: fonts.semiBold, color: colors.text },
   gradePill: {
     alignSelf: 'flex-start',

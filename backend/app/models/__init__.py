@@ -1,3 +1,4 @@
+from app.models.activity import UserActivityDay
 from app.models.chat import ChatMessage, ChatSession
 from app.models.course import Course
 from app.models.exam import Exam, ExamAttempt
