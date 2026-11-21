@@ -184,9 +184,9 @@ function QuestionCard({ q, index }: { q: QuestionAnalytics; index: number }) {
                   size={14}
                   color={isCorrect ? colors.success : colors.textFaint}
                 />
-                <Text style={[styles.choiceLabel, isCorrect && { color: colors.success }]} numberOfLines={1}>
-                  {c.label ?? c.answer}
-                </Text>
+                <View style={styles.choiceLabel}>
+                  <MathText text={c.label ?? c.answer} color={isCorrect ? colors.success : colors.textMuted} fontSize={12.5} numberOfLines={1} />
+                </View>
                 <View style={styles.choiceTrack}>
                   <View
                     style={[
@@ -207,9 +207,11 @@ function QuestionCard({ q, index }: { q: QuestionAnalytics; index: number }) {
       {q.most_common_wrong && q.most_common_wrong.count > 0 ? (
         <View style={styles.wrongNote}>
           <Ionicons name="alert-circle-outline" size={14} color={colors.accent} />
-          <Text style={styles.wrongText}>
-            Most common wrong answer: {q.most_common_wrong.label ?? q.most_common_wrong.answer} ({q.most_common_wrong.count})
-          </Text>
+          <View style={styles.wrongTextRow}>
+            <Text style={styles.wrongText}>Most common wrong answer:</Text>
+            <MathText text={q.most_common_wrong.label ?? q.most_common_wrong.answer} color={colors.text} fontSize={12.5} />
+            <Text style={styles.wrongText}>({q.most_common_wrong.count})</Text>
+          </View>
         </View>
       ) : null}
     </View>
@@ -264,7 +266,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: spacing.sm,
   },
-  wrongText: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 12.5 },
+  wrongTextRow: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
+  wrongText: { color: colors.text, fontFamily: fonts.medium, fontSize: 12.5 },
   emptyBox: { alignItems: 'center', gap: spacing.sm, marginTop: spacing.xxl },
   empty: { color: colors.textMuted, textAlign: 'center', fontFamily: fonts.regular, lineHeight: 20 },
 });

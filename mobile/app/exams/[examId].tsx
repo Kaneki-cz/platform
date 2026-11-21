@@ -422,9 +422,13 @@ export default function ExamScreen() {
                   <View style={[styles.reviewNum, answered && styles.progressDotAnswered]}>
                     <Text style={styles.progressDotText}>{i + 1}</Text>
                   </View>
-                  <Text style={[styles.reviewAnswer, !answered && { color: colors.danger }]} numberOfLines={1}>
-                    {answered ? answerText : t.notAnswered}
-                  </Text>
+                  {answered ? (
+                    <MathText text={answerText} color={colors.text} fontSize={14} numberOfLines={1} style={{ flex: 1 }} />
+                  ) : (
+                    <Text style={[styles.reviewAnswer, { color: colors.danger }]} numberOfLines={1}>
+                      {t.notAnswered}
+                    </Text>
+                  )}
                   {isFlagged ? <Ionicons name="flag" size={15} color={colors.accent} /> : null}
                   <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
                 </PressableScale>
@@ -725,9 +729,10 @@ export default function ExamScreen() {
                     </View>
                   ) : null}
                   {!a.is_correct && correctLabel && a.question_type !== 'essay' ? (
-                    <Text style={styles.correctAnswer}>
-                      {t.correctAnswer} <Text style={{ color: colors.success }}>{correctLabel}</Text>
-                    </Text>
+                    <View style={styles.correctAnswerRow}>
+                      <Text style={styles.correctAnswer}>{t.correctAnswer}</Text>
+                      <MathText text={correctLabel} color={colors.success} fontSize={13} style={{ flexShrink: 1 }} />
+                    </View>
                   ) : null}
                   {a.explanation ? (
                     <MathText text={a.explanation} color={colors.textMuted} fontSize={13} style={styles.explanation} />
@@ -1197,6 +1202,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  correctAnswerRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   reviewAnswer: { flex: 1, color: colors.text, fontFamily: fonts.regular, fontSize: 14 },
 
   navRow: {
