@@ -213,6 +213,7 @@ export default function ManageCourseExamsScreen() {
                 <Text style={[styles.chip, styles.chipPass]}>✓ pass ≥{exam.passing_percent}%</Text>
                 <Text style={styles.chip}>
                   {exam.question_count} question{exam.question_count === 1 ? '' : 's'}
+                  {exam.total_points != null && exam.total_points !== exam.question_count ? ` · ${exam.total_points} pts` : ''}
                 </Text>
                 {exam.time_limit_minutes ? <Text style={[styles.chip, styles.chipRule]}>⏱ {exam.time_limit_minutes} min</Text> : null}
                 {exam.max_attempts ? (
@@ -226,6 +227,19 @@ export default function ManageCourseExamsScreen() {
               </View>
             </View>
           </View>
+          {exam.pending_reviews ? (
+            <Pressable
+              style={styles.reviewBanner}
+              onPress={() => router.push(`/admin/exam/${exam.id}/review`)}
+              accessibilityRole="button"
+            >
+              <Ionicons name="create-outline" size={16} color={colors.accent} />
+              <Text style={styles.reviewBannerText}>
+                {exam.pending_reviews} essay answer{exam.pending_reviews === 1 ? '' : 's'} to grade
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+            </Pressable>
+          ) : null}
           <View style={styles.cardActions}>
             <Pressable
               style={[styles.actionButton, styles.actionButtonQuestions]}
@@ -509,6 +523,19 @@ const styles = StyleSheet.create({
   actionButtonAttempts: { backgroundColor: colors.violet + '1F' },
   actionButtonAttemptsText: { color: colors.violet, fontSize: 12.5, fontFamily: fonts.bold },
   actionButtonStats: { backgroundColor: colors.accent + '1F' },
+  reviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent + '66',
+    backgroundColor: colors.accent + '14',
+    minHeight: 40,
+  },
+  reviewBannerText: { flex: 1, color: colors.accent, fontFamily: fonts.bold, fontSize: 13 },
   actionButtonStatsText: { color: colors.accent, fontSize: 12.5, fontFamily: fonts.bold },
   actionButtonDelete: { backgroundColor: colors.dangerSurface, flex: 0, paddingHorizontal: 12 },
   actionButtonDeleteText: { color: colors.danger, fontSize: 12.5, fontFamily: fonts.bold },

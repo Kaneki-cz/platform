@@ -256,6 +256,8 @@ export interface ExamAttemptRow {
   started_at: string;
   submitted_at: string | null;
   is_fast: boolean;
+  // Essay answers still waiting for a teacher's grade (score_percent null).
+  pending_review?: boolean;
 }
 
 export interface ExamAttemptsData {
@@ -532,7 +534,9 @@ export interface LessonUpdateInput {
 // same pause_at_seconds belongs to the same part's quiz, shown when
 // playback reaches that timestamp (null = shown once the video ends
 // instead). See app/lessons/[id].tsx and app/components/LessonVideoPlayer.tsx.
-export type QuestionType = 'multiple_choice' | 'numeric' | 'free_response' | string;
+// 'essay' = exam-only, graded by the teacher (correct_answer is then a model
+// answer / grading notes).
+export type QuestionType = 'multiple_choice' | 'numeric' | 'free_response' | 'essay' | string;
 
 export interface QuestionAttemptState {
   is_correct: boolean;
@@ -578,6 +582,7 @@ export interface QuestionAdmin {
   explanation: string | null;
   pause_at_seconds: number | null;
   image_url: string | null;
+  points?: number;
 }
 
 export interface QuestionCreateInput {
@@ -591,6 +596,7 @@ export interface QuestionCreateInput {
   explanation?: string;
   pause_at_seconds?: number | null;
   image_url?: string | null;
+  points?: number;
 }
 
 export interface QuestionUpdateInput {
@@ -601,6 +607,7 @@ export interface QuestionUpdateInput {
   explanation?: string;
   pause_at_seconds?: number | null;
   image_url?: string | null;
+  points?: number;
 }
 
 // --- Standalone exams -------------------------------------------------------
@@ -635,6 +642,8 @@ export interface ExamAdmin {
   order_index: number;
   passing_percent: number;
   question_count: number;
+  pending_reviews?: number;
+  total_points?: number;
   // Exam rules — null means no limit. Optional so an older backend that
   // doesn't send them yet still type-checks at runtime.
   time_limit_minutes?: number | null;
@@ -707,6 +716,7 @@ export interface ExamHistoryRow {
   duration_seconds: number | null;
   submitted_at: string | null;
   auto_submitted: boolean;
+  pending_review?: boolean;
 }
 
 // What a student sees while taking the exam — no correct_answer, no
@@ -719,6 +729,7 @@ export interface ExamQuestionForStudent {
   image_url: string | null;
   // This attempt's display order for `choices` keys (shuffled per attempt).
   choice_order?: string[] | null;
+  points?: number;
 }
 
 export interface ExamStartResult {
@@ -746,10 +757,19 @@ export interface ExamAnswerResult {
   // null when the attempt failed and the exam hides answers on fail.
   correct_answer: string | null;
   explanation: string | null;
+  question_type?: QuestionType;
+  prompt?: string | null;
+  points?: number;
+  points_awarded?: number | null;
+  pending_review?: boolean;
+  teacher_comment?: string | null;
+  submitted_answer?: string | null;
 }
 
 export interface ExamSubmitResult {
-  score_percent: number;
+  attempt_id?: string;
+  // null while essay answers wait for the teacher (see pending_review).
+  score_percent: number | null;
   passed: boolean;
   correct_count: number;
   total_count: number;
@@ -757,6 +777,9 @@ export interface ExamSubmitResult {
   answers: ExamAnswerResult[];
   answers_revealed?: boolean;
   auto_submitted?: boolean;
+  earned_points?: number | null;
+  total_points?: number | null;
+  pending_review?: boolean;
 }
 
 // Teacher exam analytics (GET /api/v1/exams/{id}/analytics).
@@ -804,4 +827,30 @@ export interface ProgressSummary {
   active_today: boolean;
   lessons_completed: number;
   courses: CourseProgress[];
+}
+
+// Essay answers for the teacher to grade (GET /api/v1/exams/{id}/reviews).
+export interface ReviewItem {
+  question_attempt_id: string;
+  attempt_id: string;
+  student_name: string | null;
+  student_email: string;
+  question_id: string;
+  prompt: string;
+  image_url: string | null;
+  model_answer: string | null;
+  max_points: number;
+  submitted_answer: string;
+  submitted_at: string | null;
+  points_awarded: number | null;
+  teacher_comment: string | null;
+  reviewed_at: string | null;
+}
+
+export interface ReviewResult {
+  question_attempt_id: string;
+  points_awarded: number;
+  attempt_finalized: boolean;
+  attempt_score_percent: number | null;
+  attempt_passed: boolean | null;
 }

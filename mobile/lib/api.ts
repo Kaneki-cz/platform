@@ -18,6 +18,8 @@ import type {
   ExamAnswerSubmit,
   ExamAttemptRow,
   ExamAnalytics,
+  ReviewItem,
+  ReviewResult,
   ExamAttemptsData,
   ExamCreateInput,
   ExamStartResult,
@@ -809,6 +811,26 @@ export function getExamStatus(examId: string) {
  * server clock the app's timer must be built from. */
 export function startExam(examId: string) {
   return request<ExamStartResult>(`/api/v1/exams/${examId}/start`, { method: 'POST' });
+}
+
+/** Student. Reopen one of your own submitted attempts — e.g. to see the
+ * final score after the teacher graded your essay answers. */
+export function getAttemptResult(attemptId: string) {
+  return request<ExamSubmitResult>(`/api/v1/exams/attempts/${attemptId}/result`);
+}
+
+/** Instructor/admin. Essay answers to grade (pending, oldest first) or
+ * already graded (most recent first). */
+export function listExamReviews(examId: string, status: 'pending' | 'reviewed' = 'pending') {
+  return request<ReviewItem[]>(`/api/v1/exams/${examId}/reviews?status=${status}`);
+}
+
+/** Instructor/admin. Grade (or re-grade) one essay answer. */
+export function reviewEssayAnswer(questionAttemptId: string, pointsAwarded: number, comment?: string) {
+  return request<ReviewResult>(`/api/v1/exams/answers/${questionAttemptId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ points_awarded: pointsAwarded, comment: comment || null }),
+  });
 }
 
 /** Student. Autosaves the in-progress answers + flagged questions so they

@@ -186,6 +186,7 @@ def _build_result(db: Session, attempt: ExamAttempt, exam: Exam) -> ExamSubmitRe
                 correct_answer=(q.correct_answer or None) if reveal else None,
                 explanation=q.explanation if reveal else None,
                 question_type=q.question_type,
+                prompt=q.prompt,
                 points=q.points or 1,
                 points_awarded=(row.points_awarded if row else 0.0),
                 pending_review=bool(row and row.needs_review),

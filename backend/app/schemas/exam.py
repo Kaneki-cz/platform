@@ -125,6 +125,7 @@ class ExamAnswerResult(BaseModel):
     correct_answer: str | None = None
     explanation: str | None = None
     question_type: str | None = None
+    prompt: str | None = None
     points: int = 1
     points_awarded: float | None = None
     # Essay answers: True while waiting for the teacher.

@@ -12,7 +12,7 @@ import { PressableScale, ProgressRing, enterStagger, useCountUp } from '@/compon
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { useLanguage } from '@/context/LanguageContext';
 import { cardShadow, colors, fonts, gradientBrand, radius, spacing } from '@/constants/theme';
-import { ApiError, getExamStatus, saveExamDraft, startExam, submitExam } from '@/lib/api';
+import { ApiError, getAttemptResult, getExamStatus, saveExamDraft, startExam, submitExam } from '@/lib/api';
 import type { ExamAnswerSubmit, ExamQuestionForStudent, ExamStartResult, ExamStatus, ExamSubmitResult } from '@/lib/types';
 
 const STRINGS = {
@@ -70,6 +70,20 @@ const STRINGS = {
     tryAgainButton: 'إعادة المحاولة',
     loadError: 'الامتحان مش موجود أو حصلت مشكلة في التحميل.',
     retry: 'جرّب تاني',
+    points: (n: number) => `${n} ${n === 1 ? 'درجة' : 'درجات'}`,
+    essayPlaceholder: 'اكتب إجابتك بالتفصيل...',
+    essayNote: 'سؤال مقالي — المستر هيصححه بنفسه.',
+    pendingTitle: 'مستني تصحيح المستر',
+    pendingBody: 'إجاباتك المقالية وصلت للمستر. النتيجة النهائية هتظهر هنا أول ما يصححها.',
+    pendingSoFar: (earned: number, total: number) => `جمعت ${earned} من ${total} درجة لحد دلوقتي (من غير المقالي)`,
+    pendingBadge: 'مستني التصحيح',
+    graded: 'اتصحح',
+    teacherComment: 'تعليق المستر:',
+    yourAnswer: 'إجابتك:',
+    pointsOf: (got: number, max: number) => `${got}/${max}`,
+    historyPending: 'مستني التصحيح',
+    viewResult: 'اعرض النتيجة',
+    resultPoints: (earned: number, total: number) => `${earned} من ${total} درجة`,
   },
   en: {
     loading: 'Loading...',
@@ -125,6 +139,20 @@ const STRINGS = {
     tryAgainButton: 'Try again',
     loadError: "This exam doesn't exist, or something went wrong loading it.",
     retry: 'Try again',
+    points: (n: number) => `${n} pt${n === 1 ? '' : 's'}`,
+    essayPlaceholder: 'Write your full answer...',
+    essayNote: 'Essay question — your teacher grades this one.',
+    pendingTitle: 'Waiting for your teacher',
+    pendingBody: "Your written answers were sent to your teacher. Your final score shows up here as soon as they're graded.",
+    pendingSoFar: (earned: number, total: number) => `${earned} of ${total} points so far (not counting essays)`,
+    pendingBadge: 'Waiting for grading',
+    graded: 'Graded',
+    teacherComment: "Teacher's comment:",
+    yourAnswer: 'Your answer:',
+    pointsOf: (got: number, max: number) => `${got}/${max}`,
+    historyPending: 'Waiting for grading',
+    viewResult: 'View result',
+    resultPoints: (earned: number, total: number) => `${earned} of ${total} points`,
   },
 };
 
@@ -296,6 +324,19 @@ export default function ExamScreen() {
     ]);
   };
 
+  const openPastResult = async (attemptId: string) => {
+    setPhase('loading');
+    try {
+      const r = await getAttemptResult(attemptId);
+      setSession(null);
+      setTimedOut(false);
+      setResult(r);
+      setPhase('result');
+    } catch {
+      load();
+    }
+  };
+
   const toggleFlag = (id: string) =>
     setFlagged((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -321,7 +362,7 @@ export default function ExamScreen() {
   }
 
   if (phase === 'intro' && status) {
-    return <IntroView t={t} status={status} timedOut={timedOut} onStart={onStart} />;
+    return <IntroView t={t} status={status} timedOut={timedOut} onStart={onStart} onOpenResult={openPastResult} />;
   }
 
   if (phase === 'review' && session) {
@@ -460,7 +501,10 @@ export default function ExamScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <Animated.View style={[styles.card, questionAnimatedStyle]}>
               <View style={styles.cardHeader}>
-                <Text style={styles.questionIndex}>{t.questionProgress(currentIndex + 1, total)}</Text>
+                <View style={styles.indexRow}>
+                  <Text style={styles.questionIndex}>{t.questionProgress(currentIndex + 1, total)}</Text>
+                  <Text style={styles.pointsTag}>{t.points(q.points ?? 1)}</Text>
+                </View>
                 <Pressable
                   onPress={() => toggleFlag(q.id)}
                   style={[styles.flagButton, isFlagged && styles.flagButtonOn]}
@@ -500,6 +544,21 @@ export default function ExamScreen() {
                     );
                   })}
                 </View>
+              ) : q.question_type === 'essay' ? (
+                <View>
+                  <Text style={styles.essayNote}>{t.essayNote}</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.essayInput]}
+                    placeholder={t.essayPlaceholder}
+                    placeholderTextColor={colors.textFaint}
+                    value={answers[q.id] ?? ''}
+                    onChangeText={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))}
+                    multiline
+                    maxLength={5000}
+                    textAlignVertical="top"
+                  />
+                  <Text style={styles.charCount}>{(answers[q.id] ?? '').length}/5000</Text>
+                </View>
               ) : (
                 <TextInput
                   style={styles.textInput}
@@ -533,6 +592,8 @@ export default function ExamScreen() {
 
   if (phase === 'result' && result) {
     const revealed = result.answers_revealed !== false;
+    const pending = !!result.pending_review;
+    const hasPoints = result.total_points != null && result.total_points !== result.total_count;
     const questionById = new Map((session?.questions ?? []).map((qq) => [qq.id, qq]));
     return (
       <View style={styles.container}>
@@ -543,15 +604,30 @@ export default function ExamScreen() {
               <Text style={styles.noticeText}>{t.timeUp}</Text>
             </View>
           ) : null}
+          {pending ? (
+            <Animated.View entering={ZoomIn.springify().damping(14)} style={styles.summary}>
+              <View style={styles.pendingIcon}>
+                <Ionicons name="hourglass-outline" size={34} color={colors.accent} />
+              </View>
+              <Text style={styles.pendingTitle}>{t.pendingTitle}</Text>
+              <Text style={styles.summarySub}>{t.pendingBody}</Text>
+              {result.earned_points != null && result.total_points != null ? (
+                <Text style={styles.pendingSoFar}>{t.pendingSoFar(result.earned_points, result.total_points)}</Text>
+              ) : null}
+            </Animated.View>
+          ) : null}
+          {!pending ? (
           <Animated.View entering={ZoomIn.springify().damping(14)} style={styles.summary}>
-            <ProgressRing percent={result.score_percent} size={112} stroke={11}>
-              <ScoreLabel percent={result.score_percent} good={result.passed} />
+            <ProgressRing percent={result.score_percent ?? 0} size={112} stroke={11}>
+              <ScoreLabel percent={result.score_percent ?? 0} good={result.passed} />
             </ProgressRing>
             <Animated.Text
               entering={FadeInDown.delay(250)}
               style={[styles.summaryHeading, result.passed ? styles.summaryGood : styles.summaryBad]}
             >
-              {t.resultHeading(result.correct_count, result.total_count)}
+              {hasPoints && result.earned_points != null
+                ? t.resultPoints(result.earned_points, result.total_points!)
+                : t.resultHeading(result.correct_count, result.total_count)}
             </Animated.Text>
             <Text style={styles.summarySub}>{t.resultDuration(formatDuration(result.duration_seconds))}</Text>
             <Animated.Text entering={FadeInDown.delay(400)} style={styles.summaryMessage}>
@@ -565,6 +641,7 @@ export default function ExamScreen() {
             ) : null}
             {result.passed ? <Celebration /> : null}
           </Animated.View>
+          ) : null}
 
           {result.answers.map((a, index) => {
             const qq = questionById.get(a.question_id);
@@ -574,9 +651,24 @@ export default function ExamScreen() {
                 : a.correct_answer;
             return (
               <Animated.View key={a.question_id} entering={enterStagger(index, 450)} style={styles.card}>
-                <Text style={styles.questionIndex}>{index + 1}.</Text>
-                {qq ? <MathText text={qq.prompt} color={colors.text} fontSize={14} /> : null}
+                <View style={styles.indexRow}>
+                  <Text style={styles.questionIndex}>{index + 1}.</Text>
+                  {a.pending_review ? (
+                    <Text style={styles.pointsTag}>{t.points(a.points ?? 1)}</Text>
+                  ) : (
+                    <Text style={[styles.pointsTag, { color: a.is_correct ? colors.success : colors.textMuted }]}>
+                      {t.pointsOf(a.points_awarded ?? 0, a.points ?? 1)}
+                    </Text>
+                  )}
+                </View>
+                {a.prompt || qq ? <MathText text={(a.prompt ?? qq?.prompt) as string} color={colors.text} fontSize={14} /> : null}
                 <View style={styles.resultRow}>
+                  {a.pending_review ? (
+                    <View style={styles.resultBadgeRow}>
+                      <Ionicons name="hourglass-outline" size={15} color={colors.accent} />
+                      <Text style={[styles.resultBadge, { color: colors.accent }]}>{t.pendingBadge}</Text>
+                    </View>
+                  ) : (
                   <View style={styles.resultBadgeRow}>
                     <Ionicons
                       name={a.is_correct ? 'checkmark-circle' : 'close-circle'}
@@ -584,10 +676,26 @@ export default function ExamScreen() {
                       color={a.is_correct ? colors.success : colors.danger}
                     />
                     <Text style={[styles.resultBadge, a.is_correct ? styles.resultBadgeGood : styles.resultBadgeBad]}>
-                      {a.is_correct ? t.correct : t.incorrect}
+                      {a.question_type === 'essay' ? t.graded : a.is_correct ? t.correct : t.incorrect}
                     </Text>
                   </View>
-                  {!a.is_correct && correctLabel ? (
+                  )}
+                  {a.question_type === 'essay' && a.submitted_answer ? (
+                    <View style={styles.essayAnswerBox}>
+                      <Text style={styles.essayAnswerLabel}>{t.yourAnswer}</Text>
+                      <Text style={styles.essayAnswerText}>{a.submitted_answer}</Text>
+                    </View>
+                  ) : null}
+                  {a.teacher_comment ? (
+                    <View style={styles.commentBox}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primary} />
+                      <Text style={styles.commentText}>
+                        <Text style={{ fontFamily: fonts.bold }}>{t.teacherComment} </Text>
+                        {a.teacher_comment}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {!a.is_correct && correctLabel && a.question_type !== 'essay' ? (
                     <Text style={styles.correctAnswer}>
                       {t.correctAnswer} <Text style={{ color: colors.success }}>{correctLabel}</Text>
                     </Text>
@@ -601,7 +709,7 @@ export default function ExamScreen() {
           })}
 
           <View style={styles.resultActions}>
-            {!result.passed ? (
+            {!result.passed && !pending ? (
               // Back to the intro, which knows whether a retake is allowed
               // right now (attempt limit / cooldown).
               <Pressable style={styles.retakeWrap} onPress={load}>
@@ -627,11 +735,13 @@ function IntroView({
   status,
   timedOut,
   onStart,
+  onOpenResult,
 }: {
   t: Strings;
   status: ExamStatus;
   timedOut: boolean;
   onStart: () => void;
+  onOpenResult: (attemptId: string) => void;
 }) {
   const resuming = !!status.in_progress_attempt_id;
   const canStart = status.can_start !== false;
@@ -704,7 +814,13 @@ function IntroView({
         <Animated.View entering={FadeInDown.delay(120)} style={styles.historyCard}>
           <Text style={styles.historyTitle}>{t.historyTitle}</Text>
           {history.map((h, i) => (
-            <View key={h.attempt_id} style={[styles.historyRow, i > 0 && styles.historyRowBorder]}>
+            <Pressable
+              key={h.attempt_id}
+              style={[styles.historyRow, i > 0 && styles.historyRowBorder]}
+              onPress={() => onOpenResult(h.attempt_id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.historyRow(history.length - i)} — ${t.viewResult}`}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={styles.historyLabel}>{t.historyRow(history.length - i)}</Text>
                 <Text style={styles.historyMeta}>
@@ -713,10 +829,18 @@ function IntroView({
                   {h.auto_submitted ? ` · ${t.historyAuto}` : ''}
                 </Text>
               </View>
-              <Text style={[styles.historyScore, { color: h.passed ? colors.success : colors.danger }]}>
-                {Math.round(h.score_percent ?? 0)}%
-              </Text>
-            </View>
+              {h.pending_review ? (
+                <View style={styles.historyPending}>
+                  <Ionicons name="hourglass-outline" size={13} color={colors.accent} />
+                  <Text style={styles.historyPendingText}>{t.historyPending}</Text>
+                </View>
+              ) : (
+                <Text style={[styles.historyScore, { color: h.passed ? colors.success : colors.danger }]}>
+                  {Math.round(h.score_percent ?? 0)}%
+                </Text>
+              )}
+              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+            </Pressable>
           ))}
         </Animated.View>
       ) : null}
@@ -831,7 +955,45 @@ const styles = StyleSheet.create({
   historyRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   historyLabel: { color: colors.text, fontFamily: fonts.semiBold, fontSize: 14 },
   historyMeta: { color: colors.textMuted, fontFamily: fonts.regular, fontSize: 12 },
-  historyScore: { fontFamily: fonts.bold, fontSize: 17 },
+  historyScore: { fontFamily: fonts.bold, fontSize: 17, marginRight: 4 },
+  historyPending: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 4 },
+  historyPendingText: { color: colors.accent, fontFamily: fonts.semiBold, fontSize: 12 },
+  indexRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  pointsTag: { color: colors.accent, fontFamily: fonts.bold, fontSize: 11.5, marginBottom: 2 },
+  essayNote: { color: colors.textMuted, fontFamily: fonts.medium, fontSize: 12, marginTop: spacing.md },
+  essayInput: { minHeight: 160, lineHeight: 22 },
+  charCount: { color: colors.textFaint, fontFamily: fonts.regular, fontSize: 11, textAlign: 'right', marginTop: 4 },
+  pendingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: `${colors.accent}1A`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  pendingTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 19, marginBottom: spacing.xs },
+  pendingSoFar: { color: colors.accent, fontFamily: fonts.semiBold, fontSize: 13, marginTop: spacing.sm, textAlign: 'center' },
+  essayAnswerBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  essayAnswerLabel: { color: colors.textFaint, fontFamily: fonts.bold, fontSize: 11 },
+  essayAnswerText: { color: colors.text, fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20 },
+  commentBox: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'flex-start',
+    backgroundColor: `${colors.primary}12`,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: 4,
+  },
+  commentText: { flex: 1, color: colors.text, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19 },
 
   noticeBar: {
     flexDirection: 'row',

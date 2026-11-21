@@ -39,7 +39,9 @@ export default function ManageExamQuestionsScreen() {
   const [questions, setQuestions] = useState<QuestionAdmin[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [questionType, setQuestionType] = useState<'multiple_choice' | 'free_response'>('multiple_choice');
+  const [questionType, setQuestionType] = useState<'multiple_choice' | 'free_response' | 'essay'>('multiple_choice');
+  // How much this question counts toward the exam score.
+  const [points, setPoints] = useState(1);
   const [prompt, setPrompt] = useState('');
   const [choiceTexts, setChoiceTexts] = useState<Record<string, string>>({ A: '', B: '', C: '', D: '' });
   const [correctChoice, setCorrectChoice] = useState<string>('A');
@@ -70,6 +72,7 @@ export default function ManageExamQuestionsScreen() {
   const resetForm = () => {
     setEditingId(null);
     setQuestionType('multiple_choice');
+    setPoints(1);
     setPrompt('');
     setChoiceTexts({ A: '', B: '', C: '', D: '' });
     setCorrectChoice('A');
@@ -115,10 +118,14 @@ export default function ManageExamQuestionsScreen() {
     setExplanation(q.explanation ?? '');
     setImageUrl(q.image_url ?? null);
     setImagePreview(null);
+    setPoints(q.points ?? 1);
     if (q.question_type === 'multiple_choice' && q.choices) {
       setQuestionType('multiple_choice');
       setChoiceTexts({ A: '', B: '', C: '', D: '', ...q.choices });
       setCorrectChoice(q.correct_answer);
+    } else if (q.question_type === 'essay') {
+      setQuestionType('essay');
+      setCorrectAnswer(q.correct_answer);
     } else {
       setQuestionType('free_response');
       setCorrectAnswer(q.correct_answer);
@@ -132,6 +139,10 @@ export default function ManageExamQuestionsScreen() {
     const usedChoices = CHOICE_KEYS.filter((k) => choiceTexts[k].trim().length > 0);
     if (questionType === 'multiple_choice' && usedChoices.length < 2) {
       setError('Add at least 2 choices.');
+      return;
+    }
+    if (questionType === 'free_response' && !correctAnswer.trim()) {
+      setError('Add the correct answer — text answers are graded automatically against it.');
       return;
     }
 
@@ -148,6 +159,7 @@ export default function ManageExamQuestionsScreen() {
         correct_answer: questionType === 'multiple_choice' ? correctChoice : correctAnswer.trim(),
         explanation: explanation.trim() || undefined,
         image_url: imageUrl,
+        points,
       };
       if (editingId) {
         await updateQuestion(editingId, payload);
@@ -198,6 +210,7 @@ export default function ManageExamQuestionsScreen() {
         correct_answer: q.correct_answer,
         explanation: q.explanation ?? undefined,
         image_url: q.image_url,
+        points: q.points ?? 1,
       });
       load();
     } catch (e) {
@@ -243,9 +256,18 @@ export default function ManageExamQuestionsScreen() {
                 numberOfLines={2}
                 style={styles.cardPrompt}
               />
-              <Text style={styles.chip}>
-                {item.question_type === 'multiple_choice' ? 'Multiple choice' : 'Text answer'}
-              </Text>
+              <View style={styles.chipRow}>
+                <Text style={styles.chip}>
+                  {item.question_type === 'multiple_choice'
+                    ? 'Multiple choice'
+                    : item.question_type === 'essay'
+                      ? 'Essay · teacher grades'
+                      : 'Text answer'}
+                </Text>
+                <Text style={[styles.chip, styles.chipPoints]}>
+                  {item.points ?? 1} pt{(item.points ?? 1) === 1 ? '' : 's'}
+                </Text>
+              </View>
             </View>
             <View style={styles.cardActions}>
               <Pressable
@@ -292,6 +314,48 @@ export default function ManageExamQuestionsScreen() {
                   Text answer
                 </Text>
               </Pressable>
+              <Pressable
+                style={[styles.typeButton, questionType === 'essay' && styles.typeButtonActive]}
+                onPress={() => setQuestionType('essay')}
+              >
+                <Text style={[styles.typeButtonText, questionType === 'essay' && styles.typeButtonTextActive]}>Essay</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.typeHint}>
+              {questionType === 'essay'
+                ? 'The student writes a full answer. The exam result stays pending until you grade it from the exam\'s Review screen.'
+                : questionType === 'free_response'
+                  ? 'Graded automatically: the student\'s answer must match the correct answer.'
+                  : 'Graded automatically from the letter you mark as correct.'}
+            </Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Points</Text>
+            <View style={styles.pointsRow}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Pressable
+                  key={n}
+                  style={[styles.pointChip, points === n && styles.pointChipActive]}
+                  onPress={() => setPoints(n)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: points === n }}
+                >
+                  <Text style={[styles.pointChipText, points === n && styles.pointChipTextActive]}>{n}</Text>
+                </Pressable>
+              ))}
+              <TextInput
+                style={[styles.input, styles.pointsInput]}
+                keyboardType="number-pad"
+                value={points > 5 ? String(points) : ''}
+                placeholder="Other"
+                placeholderTextColor={colors.textFaint}
+                onChangeText={(v) => {
+                  const n = parseInt(v, 10);
+                  if (!v) setPoints(1);
+                  else if (Number.isInteger(n) && n >= 1 && n <= 100) setPoints(n);
+                }}
+              />
             </View>
           </View>
 
@@ -340,6 +404,18 @@ export default function ManageExamQuestionsScreen() {
                   {correctChoice === key ? <Text style={styles.correctTag}>✓ correct</Text> : null}
                 </View>
               ))}
+            </View>
+          ) : questionType === 'essay' ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Model answer / grading notes (optional)</Text>
+              <MathSymbolInput
+                style={[styles.input, styles.multiline]}
+                placeholder="What a full-marks answer should include. Only you see this while grading."
+                placeholderTextColor={colors.textFaint}
+                multiline
+                value={correctAnswer}
+                onChangeText={setCorrectAnswer}
+              />
             </View>
           ) : (
             <View style={styles.section}>
@@ -530,6 +606,24 @@ const styles = StyleSheet.create({
   typeButtonActive: { backgroundColor: colors.primary },
   typeButtonText: { color: colors.textMuted, fontFamily: fonts.semiBold, fontSize: 12.5 },
   typeButtonTextActive: { color: colors.onPrimary },
+  typeHint: { color: colors.textFaint, fontSize: 11.5, lineHeight: 17, marginTop: 6, fontFamily: fonts.regular },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chipPoints: { color: colors.accent, borderColor: colors.accent + '59', backgroundColor: colors.accent + '1A' },
+  pointsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pointChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pointChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  pointChipText: { color: colors.textMuted, fontFamily: fonts.bold, fontSize: 14 },
+  pointChipTextActive: { color: colors.onPrimary },
+  pointsInput: { flex: 1, marginBottom: 0, paddingVertical: 9, textAlign: 'center' },
 
   input: {
     borderWidth: 1,

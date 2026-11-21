@@ -99,10 +99,15 @@ function AttemptRow({ attempt }: { attempt: ExamAttemptRow }) {
           </Text>
         </View>
         <View style={styles.scoreBlock}>
-          <Text style={[styles.score, attempt.passed ? styles.scorePassed : styles.scoreFailed]}>
-            {attempt.score_percent != null ? `${Math.round(attempt.score_percent)}%` : '—'}
+          <Text
+            style={[
+              styles.score,
+              attempt.pending_review ? { color: colors.accent } : attempt.passed ? styles.scorePassed : styles.scoreFailed,
+            ]}
+          >
+            {attempt.pending_review ? '…' : attempt.score_percent != null ? `${Math.round(attempt.score_percent)}%` : '—'}
           </Text>
-          <Text style={styles.scoreLabel}>{attempt.passed ? 'passed' : 'failed'}</Text>
+          <Text style={styles.scoreLabel}>{attempt.pending_review ? 'to grade' : attempt.passed ? 'passed' : 'failed'}</Text>
         </View>
       </View>
       <View style={styles.rowMeta}>
