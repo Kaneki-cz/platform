@@ -1,0 +1,4 @@
+-r requirements.txt
+# Test-only tools. The suite spins up its own temporary Postgres (see
+# tests/conftest.py) and never touches a real database.
+pytest==8.3.3
