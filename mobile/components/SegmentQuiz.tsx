@@ -138,7 +138,12 @@ export function SegmentQuiz({
                         onPress={() => !results && setAnswers((prev) => ({ ...prev, [q.id]: key }))}
                         disabled={!!results}
                       >
-                        <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{label}</Text>
+                        <MathText
+                          text={label}
+                          color={selected ? colors.primary : colors.text}
+                          fontSize={styles.choiceText.fontSize}
+                          bold={selected}
+                        />
                       </Pressable>
                     );
                   })}
@@ -226,15 +231,17 @@ const styles = StyleSheet.create({
   // 'row' lays out left-to-right regardless of the Arabic text's own RTL
   // reading direction inside it, so the image (second child) always ends up
   // on the right of the row exactly where it's meant to sit.
-  questionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  questionRowText: { flex: 1 },
+  questionRow: { gap: spacing.md },
+  questionRowText: {},
   // Sized as a % of the row's own width (not a fixed px number) plus an
   // aspectRatio to derive the height — see the same style in
   // app/exams/[examId].tsx for why (a fixed px size read differently across
   // a tablet vs. a phone).
+  // Full width under the prompt, scaled to fit (never cropped) so the whole
+  // diagram stays readable.
   questionImage: {
-    width: '46%',
-    aspectRatio: 1.1,
+    width: '100%',
+    aspectRatio: 4 / 3,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
   },

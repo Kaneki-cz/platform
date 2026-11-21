@@ -188,3 +188,27 @@ def test_migration_v19_is_rerunnable(app, runs):
 
     for _ in range(runs):
         migrate()
+
+
+def test_analytics_treats_pending_essays_as_waiting_not_wrong(client, db, make_user, auth, course, make_exam):
+    exam = make_exam(course, n_questions=1, passing_percent=50)
+    essay = _add_essay(db, exam, points=2)
+    ha = auth(make_user("admin"))
+    h1, h2 = auth(make_user()), auth(make_user())
+    s1, by1 = _start(client, h1, exam)
+    _submit(client, h1, s1, {by1["Q0"]["id"]: "a", str(essay.id): "worked it out on paper"})
+    s2, by2 = _start(client, h2, exam)
+    _submit(client, h2, s2, {by2["Q0"]["id"]: "a"})  # no essay -> final 1/3
+
+    data = client.get(f"{BASE}/{exam.id}/analytics", headers=ha).json()
+    assert data["pending_reviews"] == 1
+    e = next(q for q in data["questions"] if q["question_type"] == "essay")
+    assert (e["pending_count"], e["graded_count"], e["average_points"]) == (1, 0, None)
+    assert e["most_common_wrong"] is None and e["choice_counts"] == []
+    # Only the finished attempt counts: 1/3 = 33% -> fail.
+    assert data["pass_rate"] == 0.0 and round(data["average_score"]) == 33
+
+    qa = client.get(f"{BASE}/{exam.id}/reviews", headers=ha).json()[0]["question_attempt_id"]
+    client.post(f"{BASE}/answers/{qa}/review", headers=ha, json={"points_awarded": 1})
+    e = next(q for q in client.get(f"{BASE}/{exam.id}/analytics", headers=ha).json()["questions"] if q["question_type"] == "essay")
+    assert (e["pending_count"], e["graded_count"], e["average_points"], e["correct_rate"]) == (0, 1, 1.0, 0.5)

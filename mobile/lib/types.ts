@@ -804,6 +804,11 @@ export interface QuestionAnalytics {
   correct_rate: number; // 0..1, unanswered counts as wrong
   most_common_wrong: ChoiceCount | null;
   choice_counts: ChoiceCount[];
+  // Essay (teacher-graded) questions:
+  points?: number;
+  graded_count?: number;
+  pending_count?: number;
+  average_points?: number | null;
 }
 
 export interface ExamAnalytics {
@@ -815,6 +820,7 @@ export interface ExamAnalytics {
   pass_rate: number | null;
   average_score: number | null;
   average_duration_seconds: number | null;
+  pending_reviews?: number;
   questions: QuestionAnalytics[]; // hardest first
 }
 

@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { GradeEssaysBanner } from '@/components/GradeEssaysBanner';
 import { MathText } from '@/components/MathText';
 import { Skeleton, enterStagger, useCountUp } from '@/components/motion';
 import { getExamAnalytics } from '@/lib/api';
@@ -78,6 +79,7 @@ export default function ExamAnalyticsScreen() {
           <Text style={styles.title} numberOfLines={2}>
             {data.exam_title}
           </Text>
+          <GradeEssaysBanner examId={id} count={data.pending_reviews} style={{ marginBottom: spacing.md }} />
           <Animated.View entering={FadeInDown.duration(350)} style={styles.summaryCard}>
             <Stat label="Pass rate" value={data.pass_rate} suffix="%" scale={100} />
             <Stat label="Avg score" value={data.average_score} suffix="%" />
@@ -95,7 +97,11 @@ export default function ExamAnalyticsScreen() {
       }
       renderItem={({ item, index }) => (
         <Animated.View entering={enterStagger(index, 150)}>
-          <QuestionCard q={item} index={index} />
+          {item.question_type === 'essay' ? (
+            <EssayCard q={item} index={index} examId={id} />
+          ) : (
+            <QuestionCard q={item} index={index} />
+          )}
         </Animated.View>
       )}
       ListEmptyComponent={
@@ -114,6 +120,39 @@ function Stat({ label, value, suffix, scale = 1 }: { label: string; value: numbe
     <View style={styles.stat}>
       <Text style={styles.statValue}>{value == null ? '—' : `${shown}${suffix}`}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+/** Essay questions are graded by the teacher, so "% correct" means nothing
+ * until they're graded: show graded / waiting counts and the average mark. */
+function EssayCard({ q, index, examId }: { q: QuestionAnalytics; index: number; examId: string }) {
+  const graded = q.graded_count ?? 0;
+  const pending = q.pending_count ?? 0;
+  const max = q.points ?? 1;
+  const pct = Math.round(q.correct_rate * 100);
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.rank}>#{index + 1} · Essay</Text>
+        {graded > 0 && q.average_points != null ? (
+          <Text style={[styles.rate, { color: rateColor(q.correct_rate) }]}>
+            avg {Math.round(q.average_points * 10) / 10}/{max} pts
+          </Text>
+        ) : (
+          <Text style={[styles.rate, { color: colors.textMuted }]}>Not graded yet</Text>
+        )}
+      </View>
+      <MathText text={q.prompt} color={colors.text} fontSize={14} />
+      {graded > 0 ? (
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${pct}%`, backgroundColor: rateColor(q.correct_rate) }]} />
+        </View>
+      ) : null}
+      <Text style={styles.metaSmall}>
+        {graded} graded · {pending} waiting for you
+      </Text>
+      {pending > 0 ? <GradeEssaysBanner examId={examId} count={pending} style={{ marginTop: spacing.sm }} /> : null}
     </View>
   );
 }

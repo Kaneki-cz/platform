@@ -315,6 +315,13 @@ class QuestionAnalytics(BaseModel):
     # Multiple-choice only: how many attempts picked each option, in the
     # question's own option order.
     choice_counts: list[ChoiceCount] = []
+    # Essay questions (teacher-graded): correct_rate is the average share of
+    # points given across GRADED answers; these say how many are graded and
+    # how many still wait.
+    points: int = 1
+    graded_count: int = 0
+    pending_count: int = 0
+    average_points: float | None = None
 
 
 class ExamAnalyticsOut(BaseModel):
@@ -329,4 +336,5 @@ class ExamAnalyticsOut(BaseModel):
     pass_rate: float | None = None
     average_score: float | None = None
     average_duration_seconds: float | None = None
+    pending_reviews: int = 0
     questions: list[QuestionAnalytics] = []

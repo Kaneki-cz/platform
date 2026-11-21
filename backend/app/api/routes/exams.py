@@ -544,6 +544,25 @@ def exam_analytics(
     per_question: list[QuestionAnalytics] = []
     for q in questions:
         rows = answers_by_question.get(q.id, [])
+        if q.question_type == ESSAY:
+            graded = [r for r in rows if not r.needs_review]
+            max_points = float(q.points or 1)
+            per_question.append(
+                QuestionAnalytics(
+                    question_id=q.id,
+                    prompt=q.prompt,
+                    question_type=q.question_type,
+                    correct_answer=q.correct_answer or "",
+                    correct_count=sum(1 for r in graded if r.is_correct),
+                    answered_count=len(rows),
+                    correct_rate=(sum((r.points_awarded or 0) / max_points for r in graded) / len(graded)) if graded else 0.0,
+                    points=q.points or 1,
+                    graded_count=len(graded),
+                    pending_count=len(rows) - len(graded),
+                    average_points=(sum(r.points_awarded or 0 for r in graded) / len(graded)) if graded else None,
+                )
+            )
+            continue
         correct = sum(1 for r in rows if r.is_correct)
         counts: dict[str, int] = {}
         for r in rows:
@@ -567,10 +586,12 @@ def exam_analytics(
                 correct_rate=(correct / total) if total else 0.0,
                 most_common_wrong=ChoiceCount(answer=wrong[0][0], label=label_for(q, wrong[0][0]), count=wrong[0][1]) if wrong else None,
                 choice_counts=choice_counts,
+                points=q.points or 1,
             )
         )
     per_question.sort(key=lambda qa: (qa.correct_rate, -qa.answered_count))
 
+    final = [a for a in attempts if not a.pending_review]
     durations = [a.duration_seconds for a in attempts if a.duration_seconds is not None]
     return ExamAnalyticsOut(
         exam_id=exam.id,
@@ -578,9 +599,12 @@ def exam_analytics(
         passing_percent=exam.passing_percent,
         attempt_count=total,
         student_count=len({a.user_id for a in attempts}),
-        pass_rate=(sum(1 for a in attempts if a.passed) / total) if total else None,
-        average_score=(sum(a.score_percent or 0 for a in attempts) / total) if total else None,
+        # Only fully graded attempts count toward pass rate / average score;
+        # one still waiting on essay grading has no score yet.
+        pass_rate=(sum(1 for a in final if a.passed) / len(final)) if final else None,
+        average_score=(sum(a.score_percent or 0 for a in final) / len(final)) if final else None,
         average_duration_seconds=(sum(durations) / len(durations)) if durations else None,
+        pending_reviews=sum(q.pending_count for q in per_question),
         questions=per_question,
     )
 

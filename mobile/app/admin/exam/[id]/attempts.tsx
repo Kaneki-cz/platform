@@ -1,6 +1,8 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { GradeEssaysBanner } from '@/components/GradeEssaysBanner';
 
 import { getExamAttempts } from '@/lib/api';
 import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
@@ -63,6 +65,7 @@ export default function ExamAttemptsScreen() {
   }
 
   const fastCount = data.attempts.filter((a) => a.is_fast).length;
+  const pendingCount = data.attempts.filter((a) => a.pending_review).length;
 
   return (
     <FlatList
@@ -79,16 +82,22 @@ export default function ExamAttemptsScreen() {
             question{data.question_count === 1 ? '' : 's'}
             {fastCount > 0 ? ` · ${fastCount} flagged as suspiciously fast` : ''}
           </Text>
+          <GradeEssaysBanner examId={id} count={pendingCount} style={{ marginBottom: spacing.md }} />
         </>
       }
-      renderItem={({ item }) => <AttemptRow attempt={item} />}
+      renderItem={({ item }) => <AttemptRow attempt={item} examId={id} />}
     />
   );
 }
 
-function AttemptRow({ attempt }: { attempt: ExamAttemptRow }) {
+function AttemptRow({ attempt, examId }: { attempt: ExamAttemptRow; examId: string }) {
+  const router = useRouter();
   return (
-    <View style={[styles.row, attempt.is_fast && styles.rowFast]}>
+    <Pressable
+      disabled={!attempt.pending_review}
+      onPress={() => router.push(`/admin/exam/${examId}/review`)}
+      style={[styles.row, attempt.is_fast && styles.rowFast, attempt.pending_review && { borderColor: colors.accent + '66' }]}
+    >
       <View style={styles.rowTop}>
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>
@@ -119,7 +128,7 @@ function AttemptRow({ attempt }: { attempt: ExamAttemptRow }) {
           </View>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

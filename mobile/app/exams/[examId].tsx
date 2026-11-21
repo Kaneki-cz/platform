@@ -552,7 +552,13 @@ export default function ExamScreen() {
                         accessibilityState={{ checked: selected }}
                       >
                         <View style={[styles.radio, selected && styles.radioOn]}>{selected ? <View style={styles.radioDot} /> : null}</View>
-                        <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{label}</Text>
+                        <MathText
+                          text={label}
+                          color={selected ? colors.primary : colors.text}
+                          fontSize={styles.choiceText.fontSize}
+                          bold={selected}
+                          style={{ flex: 1 }}
+                        />
                       </PressableScale>
                     );
                   })}
@@ -1104,12 +1110,14 @@ const styles = StyleSheet.create({
   },
   flagButtonOn: { borderColor: `${colors.accent}88`, backgroundColor: `${colors.accent}14` },
   flagText: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.semiBold },
-  questionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  questionRowText: { flex: 1 },
+  questionRow: { gap: spacing.md },
+  questionRowText: {},
   // % of the row width + aspectRatio so the image scales with the screen.
+  // Full width under the prompt, scaled to fit (never cropped) so the whole
+  // diagram stays readable.
   questionImage: {
-    width: '46%',
-    aspectRatio: 1.1,
+    width: '100%',
+    aspectRatio: 4 / 3,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
   },

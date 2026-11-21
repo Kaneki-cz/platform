@@ -3,7 +3,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ImageCropModal } from '@/components/ImageCropPicker';
+import { GradeEssaysBanner } from '@/components/GradeEssaysBanner';
 import { MathSymbolInput, useSharedMathToolbar } from '@/components/MathSymbolInput';
 import { MathText } from '@/components/MathText';
 import { ResolvedImage } from '@/components/ResolvedImage';
@@ -20,11 +20,6 @@ import { cardShadow, colors, fonts, radius, spacing } from '@/constants/theme';
 import type { ExamAdmin, QuestionAdmin } from '@/lib/types';
 
 const CHOICE_KEYS = ['A', 'B', 'C', 'D'] as const;
-
-// Diagram/photo picked straight from expo-image-picker, awaiting crop — see
-// ImageCropModal's initialSize prop for why width/height are carried
-// through from the picker's own asset instead of re-probed later.
-type CropTarget = { rawUri: string; width: number; height: number } | null;
 
 // Redesign pass: the question list used to be plain rows (a number + the
 // full prompt as the "title", one gray meta line) and the add/edit form
@@ -53,7 +48,6 @@ export default function ManageExamQuestionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [cropTarget, setCropTarget] = useState<CropTarget>(null);
 
   // One toolbar (math/fraction/exponent/subscript, undo, quick symbols)
   // shared by all 4 choice fields below instead of each repeating its own —
@@ -90,14 +84,11 @@ export default function ManageExamQuestionsScreen() {
       setError('Photo library permission is required to pick a photo.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    // The system editor crops freely (no fixed shape), so the whole diagram
+    // can be kept; skipping the crop keeps the full original image.
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
     if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    setCropTarget({ rawUri: asset.uri, width: asset.width, height: asset.height });
-  };
-
-  const onCropDone = async (croppedUri: string) => {
-    setCropTarget(null);
+    const croppedUri = result.assets[0].uri;
     setUploadingImage(true);
     try {
       const url = await uploadImage(croppedUri, `question-${Date.now()}.jpg`, 'image/jpeg');
@@ -236,6 +227,7 @@ export default function ManageExamQuestionsScreen() {
             </Text>
           </View>
           <Text style={styles.title}>Exam Questions</Text>
+          <GradeEssaysBanner examId={id} count={exam.pending_reviews} style={{ marginBottom: 12 }} />
           <Text style={styles.hint}>
             Answered all at once by the student, then graded together — a student passes once their score is ≥
             {exam.passing_percent}%. Add every question this exam should contain below.
@@ -447,9 +439,9 @@ export default function ManageExamQuestionsScreen() {
             {imagePreview || imageUrl ? (
               <View style={styles.imagePreviewWrap}>
                 {imagePreview ? (
-                  <Image source={{ uri: imagePreview }} style={styles.imagePreview} />
+                  <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="contain" />
                 ) : (
-                  <ResolvedImage url={imageUrl} style={styles.imagePreview} containerStyle={styles.imagePreview} />
+                  <ResolvedImage url={imageUrl} style={styles.imagePreview} containerStyle={styles.imagePreview} resizeMode="contain" />
                 )}
               </View>
             ) : null}
@@ -493,15 +485,6 @@ export default function ManageExamQuestionsScreen() {
           </View>
         </View>
       }
-    />
-    <ImageCropModal
-      visible={!!cropTarget}
-      imageUri={cropTarget?.rawUri ?? null}
-      initialSize={cropTarget ? { width: cropTarget.width, height: cropTarget.height } : null}
-      aspectRatio={4 / 3}
-      title="Crop question image"
-      onCancel={() => setCropTarget(null)}
-      onDone={onCropDone}
     />
     {choiceModals}
     </>
@@ -639,7 +622,7 @@ const styles = StyleSheet.create({
   imagePreviewWrap: { marginBottom: 10 },
   imagePreview: {
     width: '100%',
-    height: 160,
+    height: 240,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
   },
