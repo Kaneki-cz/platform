@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn } from 'react-native-reanimated';
 
 import {
   getEnrollmentStatus,
@@ -31,6 +31,8 @@ const MIN_REPORTABLE_PERCENT = 5;
 // through, so finishing early never gets missed).
 const PROGRESS_STEP = 10;
 const PASS_THRESHOLD = 0.75;
+// Same "finished" line the backend uses for completed lessons.
+const DONE_PERCENT = 90;
 
 // This screen is student-facing, so its UI text follows the app-wide
 // Arabic/English toggle (see context/LanguageContext.tsx) — unlike the
@@ -43,6 +45,7 @@ type LessonStrings = {
   videoFailed: string;
   retry: string;
   checkpoints: (passed: number, total: number) => string;
+  lessonDone: string;
 };
 
 const STRINGS: Record<'ar' | 'en', LessonStrings> = {
@@ -54,6 +57,7 @@ const STRINGS: Record<'ar' | 'en', LessonStrings> = {
     videoFailed: 'الفيديو مااشتغلش. اتأكد من النت وجرّب تاني.',
     retry: 'جرّب تاني',
     checkpoints: (passed, total) => `نقط الأسئلة: عدّيت ${passed} من ${total}`,
+    lessonDone: 'خلّصت الدرس ده!',
   },
   en: {
     limitReached: "You've used up all the allowed views for this video",
@@ -63,6 +67,7 @@ const STRINGS: Record<'ar' | 'en', LessonStrings> = {
     videoFailed: "The video didn't load. Check your connection and try again.",
     retry: 'Try again',
     checkpoints: (passed, total) => `Checkpoints: ${passed} of ${total} passed`,
+    lessonDone: 'Lesson complete!',
   },
 };
 
@@ -133,6 +138,8 @@ export default function LessonScreen() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [videoAttempt, setVideoAttempt] = useState(0);
   const [videoError, setVideoError] = useState(false);
+  // Brief "Lesson complete" badge the moment watching crosses the done line.
+  const [justCompleted, setJustCompleted] = useState(false);
 
   // useFocusEffect (not useEffect) so re-opening a lesson (e.g. after an
   // instructor edits it) picks up fresh content without a full app reload.
@@ -238,6 +245,10 @@ export default function LessonScreen() {
       // PUT /progress once a second forever instead of exactly once.
       if (percent <= lastSentPercent.current) return;
       if (percent < 100 && percent < lastSentPercent.current + PROGRESS_STEP) return;
+      if (lastSentPercent.current < DONE_PERCENT && percent >= DONE_PERCENT) {
+        setJustCompleted(true);
+        setTimeout(() => setJustCompleted(false), 3200);
+      }
       lastSentPercent.current = percent;
       updateProgress(id, percent).catch(() => {});
     },
@@ -365,6 +376,19 @@ export default function LessonScreen() {
         {lesson.content ? <Text style={styles.content}>{lesson.content}</Text> : null}
       </ScrollView>
 
+      {justCompleted ? (
+        <Animated.View
+          entering={ZoomIn.springify().damping(12)}
+          exiting={FadeOut.duration(300)}
+          style={styles.doneBadge}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
+          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          <Text style={styles.doneText}>{t.lessonDone}</Text>
+        </Animated.View>
+      ) : null}
+
       {activeQuiz ? (
         <SegmentQuiz
           language={language}
@@ -450,6 +474,26 @@ const styles = StyleSheet.create({
   checkpointPip: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.surfaceAlt },
   checkpointPassed: { backgroundColor: colors.success },
   checkpointActive: { backgroundColor: colors.primary },
+  doneBadge: {
+    position: 'absolute',
+    top: spacing.lg,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: `${colors.success}66`,
+    borderRadius: radius.pill,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  doneText: { color: colors.text, fontFamily: fonts.bold, fontSize: 15 },
   viewsMeta: { fontSize: 12, color: colors.textFaint, marginTop: 6, textAlign: 'right' },
   lockedBox: {
     backgroundColor: colors.surfaceAlt,

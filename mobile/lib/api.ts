@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 
 import { getApiBaseUrl } from './config';
+import { setOffline } from './network';
 import type {
   AskResponse,
   AttendanceScanResult,
@@ -306,7 +307,15 @@ async function request<T>(
     }
   }
 
-  const res = await fetch(`${getApiBaseUrl()}${path}`, { ...rest, headers: finalHeaders });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBaseUrl()}${path}`, { ...rest, headers: finalHeaders });
+  } catch (e) {
+    // Never reached the server at all — see lib/network.ts.
+    setOffline(true);
+    throw e;
+  }
+  setOffline(false);
 
   if (!res.ok) {
     let detail = res.statusText;

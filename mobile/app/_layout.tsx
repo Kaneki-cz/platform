@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Text, TextInput } from 'react-native';
 
 import { AuthGate } from '@/components/AuthGate';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { AuthProvider } from '@/context/AuthContext';
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext';
 import { colors, fonts } from '@/constants/theme';
@@ -166,6 +167,7 @@ export default function RootLayout() {
           <AuthProvider>
             <AuthGate>
               <RootStack />
+              <OfflineBanner />
               {/* App is a fixed dark theme now, not tied to the system setting —
                   force light status-bar icons/text so they stay visible against
                   the dark background regardless of the device's own theme. */}

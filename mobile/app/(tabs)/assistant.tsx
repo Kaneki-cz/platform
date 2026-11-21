@@ -3,7 +3,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -24,6 +23,8 @@ import {
   setSavedAssistantSessionId,
 } from '@/lib/api';
 import { MathText } from '@/components/MathText';
+import { TypingDots } from '@/components/motion';
+import Animated, { FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import { VisualizationRenderer } from '@/components/visualizations/VisualizationRenderer';
 import { useLanguage, type Language } from '@/context/LanguageContext';
 import { useHeaderHeight } from 'expo-router/react-navigation';
@@ -489,25 +490,34 @@ export default function AssistantScreen() {
           );
           // Two explicit branches (not a `const Wrap = isUser ? LinearGradient
           // : View` swap) so TypeScript can check each one's props on its own.
-          return isUser ? (
-            <LinearGradient
-              colors={gradientBrand}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.bubble, styles.userBubble]}
-            >
-              {bubbleContent}
-            </LinearGradient>
-          ) : (
-            <View style={[styles.bubble, styles.assistantBubble]}>{bubbleContent}</View>
+          // New bubbles rise in from their own side.
+          return (
+            <Animated.View entering={(isUser ? FadeInRight : FadeInLeft).duration(260).springify().damping(18)}>
+              {isUser ? (
+                <LinearGradient
+                  colors={gradientBrand}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.bubble, styles.userBubble]}
+                >
+                  {bubbleContent}
+                </LinearGradient>
+              ) : (
+                <View style={[styles.bubble, styles.assistantBubble]}>{bubbleContent}</View>
+              )}
+            </Animated.View>
           );
         }}
         ListFooterComponent={
           sending ? (
-            <View style={[styles.bubble, styles.assistantBubble, styles.typingBubble]}>
-              <ActivityIndicator size="small" color={colors.accent} />
+            <Animated.View
+              entering={FadeInLeft.duration(220)}
+              style={[styles.bubble, styles.assistantBubble, styles.typingBubble]}
+              accessibilityLabel={t.thinking}
+            >
+              <TypingDots />
               <Text style={styles.typingText}>{t.thinking}</Text>
-            </View>
+            </Animated.View>
           ) : null
         }
       />

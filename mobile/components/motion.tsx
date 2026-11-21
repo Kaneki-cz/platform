@@ -9,6 +9,7 @@ import Animated, {
   withRepeat,
   withSequence,
   withSpring,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
@@ -168,3 +169,29 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
 const styles = StyleSheet.create({
   skeleton: { backgroundColor: colors.surfaceAlt, borderRadius: radius.md },
 });
+
+function Dot({ delay, color }: { delay: number; color: string }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withDelay(
+      delay,
+      withRepeat(withSequence(withTiming(1, { duration: 320 }), withTiming(0, { duration: 320 })), -1),
+    );
+  }, [delay, t]);
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.35 + t.value * 0.65,
+    transform: [{ translateY: -3 * t.value }],
+  }));
+  return <Animated.View style={[{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }, style]} />;
+}
+
+/** Three bouncing dots — "someone is typing". */
+export function TypingDots({ color = colors.accent }: { color?: string }) {
+  return (
+    <Animated.View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 12 }}>
+      <Dot delay={0} color={color} />
+      <Dot delay={140} color={color} />
+      <Dot delay={280} color={color} />
+    </Animated.View>
+  );
+}
